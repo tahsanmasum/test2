@@ -786,7 +786,8 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
             <div class="tl"><b>TLS (wss://)</b><small>Required when the dashboard is served over HTTPS.</small></div>
           </div>
           <div class="toggle-row">
-            <button class="switch" id="bkSim" aria-pressed="true" aria-label="Publish simulated nodes"></button>
+            <!-- UPDATE: Keep aria-pressed false so simulated zone-node publishing stays disabled by default -->
+            <button class="switch" id="bkSim" aria-pressed="false" aria-label="Publish simulated nodes"></button>
             <div class="tl"><b>Publish simulated zone nodes</b><small>Loops demo readings through the broker so sensors appear even with no hardware. Real ESP32 nodes on the same topic show up too.</small></div>
           </div>
           <div class="url-preview" id="urlPreview">wss://broker.hivemq.com:8884/mqtt</div>
@@ -834,8 +835,1163 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
         Open command dashboard
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </button>
-      <button class="btn btn-lg" id="btnSimDash">Continue in simulation</button>
+      <button class="btn btn-lg" id="btnSimDash">Open dashboard offline</button>
     </div>
     <div class="cn-note">
-      <svg viewBox="0 0 24 24" fill="none" stroke=
-...
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+      <span>If the broker can't be reached (blocked port, offline network) the dashboard still opens, but it stays offline until a live broker is available.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DASHBOARD ================= -->
+<div class="screen" data-screen="dashboard" hidden>
+  <header class="d-topbar">
+    <div class="d-brand">
+      <span class="crest" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#8DD9AC" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5.5v6c0 5 3.4 9.1 8 10.5 4.6-1.4 8-5.5 8-10.5v-6L12 2Z"/><path d="M9 12h6M12 9v6"/></svg></span>
+      <span><b>SCS-RG Command</b><small>UFT-B Safety Grid</small></span>
+    </div>
+    <div class="d-spacer"></div>
+    <div class="d-group">
+      <button class="link-pill" id="linkPill" data-link="offline" title="Broker status — click to manage"><span class="link-dot"></span><span id="linkText">OFFLINE</span></button>
+      <span class="clock mono" id="clock">--:--:--</span>
+    </div>
+    <div class="d-group">
+      <div class="role-switch" role="group" aria-label="Acting role">
+        <button id="roleStaff" aria-pressed="true">Security staff</button>
+        <button id="roleAdmin" aria-pressed="false">Admin</button>
+      </div>
+      <button class="ctl" id="soundBtn" aria-pressed="true" title="Alert sound">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <span>Sound</span>
+      </button>
+      <button class="ctl" id="themeBtn" title="Switch theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+        <span id="themeLabel">Light</span>
+      </button>
+      <button class="ctl" id="dashLogout" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="command-banner" id="banner" hidden role="status" aria-live="assertive">
+    <div class="cb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v5"/><path d="M12 17.5h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21.4h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+    <div><div class="cb-label">Respond first</div><h1 class="cb-title" id="bannerZone">—</h1><div class="cb-why" id="bannerWhy">—</div></div>
+    <div class="cb-score"><div class="n mono" id="bannerScore">—</div><div class="l">Risk score</div></div>
+  </div>
+
+  <main class="d-main">
+    <div class="ladder-rail">
+      <section class="panel"><div class="panel-head"><h2>Response ladder</h2><span class="hint" id="ladderHint">idle</span></div><div class="ladder" id="ladder"></div></section>
+      <section class="panel"><div class="panel-head"><h2>Report by text</h2><span class="hint">Bonus 4</span></div>
+        <div class="panel-body-tight"><div class="report-input">
+          <textarea class="report-ta" id="reportTa" placeholder="e.g. Strong smell of gas near the IoT Lab bench, not sure how bad"></textarea>
+          <div class="report-row"><button class="btn btn-sm" id="reportSample">Use example</button><div class="spacer"></div><button class="btn btn-primary btn-sm" id="reportSend">Interpret &amp; check</button></div>
+        </div><div id="gateOut"></div></div>
+      </section>
+      <section class="panel"><div class="panel-head"><h2>Predicted risk</h2><span class="hint">next 3 min</span></div>
+        <div class="panel-body-tight"><div id="predRows"></div>
+          <div class="advisory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span><b>Advisory only.</b> A predicted value never trips the relay, buzzer or zone state. Only measured readings actuate.</span></div>
+          <div class="model-meta"><span>Model <b>logistic regression</b></span><span>Trained on <b>synthetic</b></span><span>Val. acc <b>0.91</b></span><span>Recall <b>0.88</b></span></div>
+        </div>
+      </section>
+    </div>
+    <div class="col-right">
+      <section class="panel"><div class="panel-head"><h2>Campus zones</h2><span class="hint" id="gridHint">4 monitored</span></div><div class="panel-body-tight"><div class="zone-grid" id="zoneGrid"></div></div></section>
+      <section class="panel"><div class="panel-head"><h2>Incident log</h2><span class="hint" id="incHint">0 records</span></div>
+        <div class="filters">
+          <label class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="sr-only">Search incidents</span><input class="search" id="incSearch" placeholder="Search zone, hazard or who acknowledged"></label>
+          <select class="filter-sel" id="incZone"><option value="">All zones</option></select>
+          <select class="filter-sel" id="incStatus"><option value="">Any status</option><option value="OPEN">Open</option><option value="ACKNOWLEDGED">Acknowledged</option><option value="RESOLVED">Resolved</option></select>
+          <select class="filter-sel" id="incRange"><option value="0">All time</option><option value="5">Last 5 min</option><option value="30">Last 30 min</option></select>
+          <button class="btn btn-sm" id="exportBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>CSV</button>
+        </div>
+        <div style="overflow-x:auto"><table class="itable"><thead><tr><th style="width:78px">ID</th><th>Zone</th><th>Hazards</th><th>Peak</th><th>Status</th><th>Acknowledged by</th><th>Duration</th></tr></thead><tbody id="incBody"></tbody></table></div>
+      </section>
+      <section class="panel"><div class="panel-head"><h2>Risk fusion in use</h2><span class="hint">computed on the backend</span></div>
+        <div class="panel-body-tight">
+          <div class="formula"><span class="c">// the zone node sends raw values only — never a score or a state</span><br>risk(zone) = <span class="w">40</span>·fire<span class="c">(0|1, after 3-sample debounce)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">25</span>·gas<span class="c">(0.0–1.0, normalised, 30 s warm-up)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">20</span>·water<span class="c">(0.0–1.0)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">15</span>·occupancy<span class="c">(min(people/4, 1))</span></div>
+          <div class="thresholds"><div class="thresh" data-s="SAFE"><div class="r mono">&lt; 30</div><div class="s">SAFE</div></div><div class="thresh" data-s="WARNING"><div class="r mono">30 – 64</div><div class="s">WARNING</div></div><div class="thresh" data-s="CRITICAL"><div class="r mono">≥ 65</div><div class="s">CRITICAL</div></div></div>
+          <p style="font-size:12px;color:var(--color-text-muted);line-height:1.6;margin:12px 0 0">Fire is weighted highest — it escalates fastest in a lab full of electronics. Occupancy is lightest alone but becomes the tie-breaker when two zones are critical together. Escalation uses hysteresis: a zone leaves CRITICAL only below 58 and WARNING only below 25, so a flapping sensor can't spawn duplicate incidents.</p>
+        </div>
+      </section>
+      <section class="panel" id="healthPanel" hidden><div class="panel-head"><h2>System health</h2><span class="hint">admin only</span></div><div class="panel-body-tight"><div class="stat-grid" id="statGrid"></div><div class="phantom-strip" id="phantomStrip"></div></div></section>
+      <section class="panel" id="scenarioPanel" hidden><div class="panel-head"><h2>Scenario console</h2><span class="hint">drives the sensor layer</span></div>
+        <div class="panel-body-tight"><div class="scenario-grid" id="scenarioGrid"></div>
+          <div class="lock-note" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg><span>These buttons move the raw sensor values only. When a broker is connected, readings are published to it and come back through the subscription — the same path a real ESP32 node takes.</span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="foot">
+    <span>SCS-RG · RoboFusion 1.0 Round 1</span><i class="sep"></i>
+    <span id="footLink">Offline mode</span><i class="sep"></i>
+    <span>Zone nodes: ESP32 · flame · MQ-2 · water level · PIR</span><i class="sep"></i>
+    <span id="footBackup">Last backup —</span>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions"></div>
+<div class="overlay" id="overlay" hidden><div class="overlay-card"><div class="spin"></div><h3 id="ovTitle">Working</h3><p id="ovText">One moment…</p></div></div>
+
+<script>
+/* =====================================================================
+   SCS-RG — landing → admin login → broker connect → command dashboard
+   ===================================================================== */
+(function () {
+'use strict';
+
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const now = () => Date.now();
+const pad = n => String(n).padStart(2, '0');
+const fmtClock = t => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+const fmtDur = ms => { if (ms == null) return '—'; const s = Math.max(0, Math.round(ms / 1000)); if (s < 60) return s + 's'; const m = Math.floor(s / 60); return m + 'm ' + pad(s % 60) + 's'; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+/* ---------------------------------------------------------------- icons */
+const I = {
+  safe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><path d="M12 16.5h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21.4h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+  crit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5h.01"/></svg>',
+  off:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M9.5 9.5A5 5 0 0 0 12 19a5 5 0 0 0 3.4-1.3"/><path d="M6.3 6.3A9 9 0 0 0 12 22"/></svg>',
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.6 20a6.6 6.6 0 0 1 12.8 0"/></svg>',
+  trend:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 5.5-5.5 3.5 3.5L21 5"/><path d="M15 5h6v6"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  note:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9.7L15.2 20H5.5A1.5 1.5 0 0 1 4 18.5v-13Z"/><path d="M8 9h8M8 13h5"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.8 7 9 4-1.2 7-4.7 7-9V5.8L12 3Z"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>',
+  flame:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s5 4.2 5 9a5 5 0 0 1-10 0c0-1.6.6-3 1.4-4.1.3 1.2 1 2 1.9 2.3C10 8.4 12 6 12 3Z"/></svg>',
+  drop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 6.8 10a7 7 0 1 0 10.4 0L12 3.5Z"/></svg>',
+  wave:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg>',
+  plug:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6M15 3v6"/><path d="M6 9h12v3a6 6 0 0 1-12 0V9Z"/><path d="M12 18v3"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>',
+  stack:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  power:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.5 6.8a8 8 0 1 0 11 0"/></svg>',
+  users2:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0"/></svg>',
+  wifi:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a12 12 0 0 1 16 0"/><path d="M7.5 12.5a7 7 0 0 1 9 0"/><path d="M10.5 16a3 3 0 0 1 3 0"/><path d="M12 19.5h.01"/></svg>',
+  wifioff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10 10 0 0 1 3-2.1"/><path d="M16.5 10.4A10 10 0 0 1 19 12.5"/><path d="M12 19.5h.01"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>',
+};
+
+/* =====================================================================
+   PERSISTENCE — mirrors "save this to their login dashboard"
+   ===================================================================== */
+const Store = {
+  key: 'scsrg_v1',
+  data: null,
+  load() {
+    try {
+      const raw = localStorage.getItem(this.key);
+      this.data = raw ? JSON.parse(raw) : {};
+    } catch (e) { this.data = {}; }
+    this.data.connections = this.data.connections || [];
+    this.data.session = this.data.session || null;
+    this.data.lastConfig = this.data.lastConfig || null;
+    return this.data;
+  },
+  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
+  setSession(s) { this.data.session = s; this.save(); },
+  clearSession() { this.data.session = null; this.save(); },
+  addConnection(conn) {
+    conn.id = conn.id || uid();
+    conn.savedAt = now();
+    const i = this.data.connections.findIndex(c => c.host === conn.host && c.port === conn.port && c.path === conn.path);
+    if (i >= 0) this.data.connections[i] = conn; else this.data.connections.unshift(conn);
+    this.data.connections = this.data.connections.slice(0, 6);
+    this.save();
+    return conn;
+  },
+  removeConnection(id) { this.data.connections = this.data.connections.filter(c => c.id !== id); this.save(); },
+  setLastConfig(c) { this.data.lastConfig = c; this.save(); },
+};
+Store.load();
+
+/* =====================================================================
+   AUTH
+   ===================================================================== */
+const AUTH = { username: 'frontieruni111', password: '20262026' };
+
+/* =====================================================================
+   ROUTER
+   ===================================================================== */
+const Router = {
+  screens: {},
+  current: null,
+  init() {
+    $$('.screen').forEach(el => this.screens[el.dataset.screen] = el);
+    document.addEventListener('click', e => {
+      const go = e.target.closest('[data-go]');
+      if (go) { e.preventDefault(); this.go(go.dataset.go); }
+    });
+    // restore session
+    const sess = Store.data.session;
+    if (sess && sess.user) this.go('connect', { skipAnim: true });
+    else this.go('landing', { skipAnim: true });
+  },
+  go(name, opts) {
+    opts = opts || {};
+    if (!this.screens[name]) return;
+    Object.values(this.screens).forEach(el => el.hidden = true);
+    this.screens[name].hidden = false;
+    this.current = name;
+    window.scrollTo({ top: 0, behavior: opts.skipAnim ? 'auto' : 'smooth' });
+    if (name === 'landing') { LandingFX.start(); }
+    else { LandingFX.stop(); }
+    if (name === 'connect') Connect.onEnter();
+    if (name === 'dashboard') Dashboard.onEnter();
+  },
+};
+
+/* =====================================================================
+   LANDING — reveal-on-scroll + tiny live hero preview
+   ===================================================================== */
+const LandingFX = {
+  io: null, clockTimer: null, heroTimer: null, started: false,
+  heroZones: [
+    { name: 'Server Room', score: 78, why: 'water + fire · 0 inside' },
+    { name: 'IoT Lab', score: 71, why: 'fire + gas · 5 inside' },
+  ],
+  start() {
+    this.initReveal();
+    if (this.started) return;
+    this.started = true;
+    this.renderHero();
+    this.clockTimer = setInterval(() => { const el = $('#heroClock'); if (el) el.textContent = fmtClock(now()); }, 1000);
+    this.heroTimer = setInterval(() => this.driftHero(), 2600);
+  },
+  stop() { /* keep timers light; no teardown needed for a demo */ },
+  initReveal() {
+    if (this.io) return;
+    this.io = new IntersectionObserver(entries => {
+      entries.forEach(en => { if (en.isIntersecting) { en.target.classList.add('in'); this.io.unobserve(en.target); } });
+    }, { threshold: 0.12 });
+    $$('.reveal').forEach(el => this.io.observe(el));
+  },
+  driftHero() {
+    this.heroZones.forEach(z => { z.score = clamp(z.score + Math.round((Math.random() - 0.45) * 9), 40, 96); });
+    this.heroZones.sort((a, b) => b.score - a.score);
+    this.renderHero();
+  },
+  renderHero() {
+    const ladder = $('#heroLadder');
+    if (!ladder) return;
+    ladder.innerHTML = this.heroZones.map((z, i) =>
+      '<div class="hero-rung' + (i === 0 ? ' crit' : '') + '"><div class="r mono">' + (i + 1) + '</div>' +
+      '<div><div class="nm">' + esc(z.name) + '</div><div class="wy">' + esc(z.why) + '</div></div>' +
+      '<div class="sc mono">' + z.score + '</div></div>').join('');
+    const map = $('#heroMap');
+    if (map && !map.dataset.built) {
+      map.dataset.built = '1';
+      map.innerHTML = heroMapSVG();
+    }
+    if (map) {
+      const top = this.heroZones[0].name;
+      $$('rect[data-zone]', map).forEach(r => {
+        r.setAttribute('fill', r.dataset.zone === top ? 'var(--uft-danger)' : (Math.random() < 0.2 ? 'var(--uft-warning)' : 'var(--uft-success)'));
+      });
+    }
+  },
+};
+function heroMapSVG() {
+  const rooms = [
+    { x: 8, y: 8, w: 78, h: 54, n: 'IoT Lab' },
+    { x: 94, y: 8, w: 78, h: 54, n: 'Server Room' },
+    { x: 8, y: 70, w: 78, h: 50, n: 'Robotics Lab' },
+    { x: 94, y: 70, w: 78, h: 50, n: 'Data Science Lab' },
+  ];
+  const rects = rooms.map(r =>
+    '<rect data-zone="' + r.n + '" x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" rx="7" fill="var(--uft-success)" opacity="0.85"/>' +
+    '<text x="' + (r.x + 8) + '" y="' + (r.y + 18) + '" font-size="9" font-family="Archivo, sans-serif" font-weight="700" fill="#fff" opacity="0.92">' + esc(r.n) + '</text>'
+  ).join('');
+  return '<svg viewBox="0 0 180 128" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' + rects + '</svg>';
+}
+
+/* =====================================================================
+   LOGIN
+   ===================================================================== */
+const Login = {
+  init() {
+    const form = $('#loginForm');
+    const u = $('#lgUser'), p = $('#lgPass'), err = $('#loginErr'), errText = $('#loginErrText');
+    // prefill for the judges, as promised in the hint copy
+    u.value = AUTH.username;
+    p.value = AUTH.password;
+    const pwToggle = $('#lgPwToggle');
+    pwToggle.addEventListener('click', () => {
+      const showing = p.type === 'text';
+      p.type = showing ? 'password' : 'text';
+      $('#lgEye').style.opacity = showing ? '1' : '.55';
+    });
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      err.classList.remove('show');
+      if (u.value.trim() === AUTH.username && p.value === AUTH.password) {
+        Store.setSession({ user: u.value.trim(), role: 'admin', at: now() });
+        Router.go('connect');
+      } else {
+        errText.textContent = 'Wrong username or password.';
+        err.classList.add('show');
+        form.animate(
+          [{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(7px)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(0)' }],
+          { duration: 320, easing: 'cubic-bezier(.36,.07,.19,.97)' }
+        );
+        p.focus(); p.select();
+      }
+    });
+  },
+};
+
+/* =====================================================================
+   MQTT BROKER LAYER
+   Real connection via MQTT.js over WebSocket when the library is
+    available; if the broker cannot be reached, the dashboard stays offline until a live connection is available.
+   ===================================================================== */
+const Broker = {
+  client: null,
+  mode: 'none',            // 'none' | 'live'
+  status: 'offline',       // 'offline' | 'connecting' | 'online'
+  cfg: null,
+  msgCount: 0,
+  connectedAt: 0,
+  latency: null,
+  seenNodes: new Map(),    // topic-derived node id -> last seen / payload
+  listeners: [],
+  simTimer: null,
+  simSeq: 0,
+
+  on(fn) { this.listeners.push(fn); },
+  emit(evt) { this.listeners.forEach(fn => fn(evt)); },
+
+  buildUrl(cfg) {
+    const scheme = cfg.tls ? 'wss' : 'ws';
+    return scheme + '://' + cfg.host + ':' + cfg.port + (cfg.path.startsWith('/') ? cfg.path : '/' + cfg.path);
+  },
+
+  connect(cfg) {
+    this.disconnect();
+    this.cfg = cfg;
+    this.status = 'connecting';
+    this.emit({ type: 'status', status: 'connecting' });
+    const url = this.buildUrl(cfg);
+    const t0 = now();
+
+    const haveLib = typeof window.mqtt !== 'undefined' && typeof window.mqtt.connect === 'function';
+    if (!haveLib) { this.fallbackToOffline('MQTT.js did not load (offline network or blocked CDN).'); return; }
+
+    let settled = false;
+    const failTimer = setTimeout(() => { if (!settled) { settled = true; this.fallbackToOffline('Connection timed out after 7s — port likely blocked from this network.'); } }, 7000);
+
+    try {
+      const opts = {
+        clientId: 'scsrg_dash_' + uid(),
+        reconnectPeriod: 0,
+        connectTimeout: 6500,
+        clean: true,
+      };
+      if (cfg.user) opts.username = cfg.user;
+      if (cfg.pass) opts.password = cfg.pass;
+      this.client = window.mqtt.connect(url, opts);
+
+      this.client.on('connect', () => {
+        if (settled) return; settled = true; clearTimeout(failTimer);
+        this.mode = 'live'; this.status = 'online'; this.connectedAt = now();
+        this.latency = now() - t0;
+        this.client.subscribe(cfg.topic.replace(/\/$/, '') + '/#', { qos: 0 });
+        this.emit({ type: 'status', status: 'online', mode: 'live', latency: this.latency });
+      });
+      this.client.on('message', (topic, payload) => {
+        this.msgCount++;
+        let obj = null;
+        try { obj = JSON.parse(payload.toString()); } catch (e) { obj = null; }
+        const nodeId = topic.split('/').pop();
+        this.seenNodes.set(nodeId, { topic, at: now(), payload: obj });
+        this.emit({ type: 'message', topic, nodeId, payload: obj });
+      });
+      this.client.on('error', () => { if (settled) return; settled = true; clearTimeout(failTimer); this.fallbackToOffline('Broker refused the connection (bad host, TLS mismatch, or blocked port).'); });
+      this.client.on('close', () => { if (this.mode === 'live' && this.status === 'online') { this.status = 'offline'; this.emit({ type: 'status', status: 'offline', mode: 'live' }); } });
+    } catch (e) {
+      clearTimeout(failTimer);
+      this.fallbackToOffline('Could not open a WebSocket to that host.');
+    }
+  },
+
+  fallbackToOffline(reason) {
+    this.disconnect();
+    this.emit({ type: 'status', status: 'offline', mode: 'none', reason });
+  },
+
+  startSimLoop() {
+    clearInterval(this.simTimer);
+    const nodes = ['IOT', 'SRV', 'ROB', 'DSL'];
+    this.simTimer = setInterval(() => {
+      this.simSeq++;
+      nodes.forEach(n => {
+        // respect a scenario-console "disconnect this node" fault — a broker
+        // can only relay what its node actually publishes
+        if (Nodes.faults[n] && Nodes.faults[n].disconnected) return;
+        const payload = { seq: this.simSeq, ts: now(), source: 'sim' };
+        this.msgCount++;
+        this.seenNodes.set(n, { topic: (this.cfg ? this.cfg.topic : 'scsrg/campus') + '/' + n, at: now(), payload });
+        this.emit({ type: 'message', topic: (this.cfg ? this.cfg.topic : 'scsrg/campus') + '/' + n, nodeId: n, payload, simulated: true });
+      });
+    }, 1200);
+  },
+
+  publish(topic, obj) {
+    if (this.mode !== 'live' || !this.client || !this.client.connected) return;
+    try { this.client.publish(topic, JSON.stringify(obj)); } catch (e) { /* ignore */ }
+  },
+
+  disconnect() {
+    clearInterval(this.simTimer);
+    if (this.client) { try { this.client.end(true); } catch (e) {} this.client = null; }
+    this.mode = 'none'; this.status = 'offline'; this.seenNodes.clear();
+    this.emit({ type: 'status', status: 'offline', mode: 'none' });
+  },
+};
+
+/* =====================================================================
+   CONNECT SCREEN
+   ===================================================================== */
+const PRESETS = [
+  { id: 'hivemq-public', label: 'HiveMQ public broker', host: 'broker.hivemq.com', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false },
+  { id: 'hivemq-cloud', label: 'HiveMQ Cloud (your cluster)', host: '', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false, needsAuth: true },
+  { id: 'mosquitto-test', label: 'Mosquitto test broker', host: 'test.mosquitto.org', port: 8081, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false },
+  { id: 'local', label: 'Local Mosquitto', host: 'localhost', port: 9001, path: '/mqtt', topic: 'scsrg/campus', tls: false, sim: false },
+];
+
+const Connect = {
+  activePreset: 'hivemq-public',
+  entered: false,
+
+  onEnter() {
+    const sess = Store.data.session;
+    $('#cnUser').textContent = (sess && sess.user) || 'admin';
+    $('#cnAvatar').textContent = ((sess && sess.user) || 'A').slice(0, 1).toUpperCase();
+    if (this.entered) { this.renderSaved(); this.reflectStatus(); return; }
+    this.entered = true;
+    this.renderPresets();
+    this.applyPreset(this.activePreset, { silent: true });
+    this.wire();
+    this.renderSaved();
+
+    Broker.on(evt => {
+      if (evt.type === 'status') this.reflectStatus(evt);
+      if (evt.type === 'message') this.onNode(evt);
+    });
+
+    const last = Store.data.lastConfig;
+    if (last) this.fillForm(last);
+  },
+
+  renderPresets() {
+    $('#presetRow').innerHTML = PRESETS.map(p =>
+      '<button class="preset" data-preset="' + p.id + '" aria-pressed="' + (p.id === this.activePreset) + '">' + esc(p.label) + '</button>').join('') +
+      '<button class="preset" data-preset="custom" aria-pressed="false">Custom broker</button>';
+  },
+
+  applyPreset(id, opts) {
+    opts = opts || {};
+    this.activePreset = id;
+    $$('.preset', $('#presetRow')).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === id)));
+    const p = PRESETS.find(x => x.id === id);
+    if (p) {
+      $('#bkLabel').value = p.label;
+      $('#bkHost').value = p.host;
+      $('#bkPort').value = p.port;
+      $('#bkPath').value = p.path;
+      $('#bkTopic').value = p.topic;
+      $('#bkTls').setAttribute('aria-pressed', String(p.tls));
+      $('#bkSim').setAttribute('aria-pressed', String(!!p.sim));
+    } else {
+      $('#bkLabel').value = 'Custom broker';
+      $('#bkHost').value = '';
+    }
+    this.updatePreview();
+    if (!opts.silent) toast({ level: 'info', title: 'Template applied: ' + (p ? p.label : 'Custom broker'), detail: p && p.needsAuth ? 'Enter your HiveMQ Cloud cluster host and credentials before connecting.' : 'Adjust any field, then press Connect.' });
+  },
+
+  currentConfig() {
+    return {
+      label: $('#bkLabel').value.trim() || 'Broker',
+      host: $('#bkHost').value.trim(),
+      port: +$('#bkPort').value.trim() || 8884,
+      path: $('#bkPath').value.trim() || '/mqtt',
+      topic: $('#bkTopic').value.trim() || 'scsrg/campus',
+      user: $('#bkUser').value.trim(),
+      pass: $('#bkPass').value,
+      tls: $('#bkTls').getAttribute('aria-pressed') === 'true',
+      simPublish: $('#bkSim').getAttribute('aria-pressed') === 'true',
+    };
+  },
+
+  fillForm(c) {
+    $('#bkLabel').value = c.label || '';
+    $('#bkHost').value = c.host || '';
+    $('#bkPort').value = c.port || 8884;
+    $('#bkPath').value = c.path || '/mqtt';
+    $('#bkTopic').value = c.topic || 'scsrg/campus';
+    $('#bkUser').value = c.user || '';
+    $('#bkTls').setAttribute('aria-pressed', String(c.tls !== false));
+    $('#bkSim').setAttribute('aria-pressed', String(c.simPublish === true));
+    this.updatePreview();
+  },
+
+  updatePreview() {
+    const c = this.currentConfig();
+    const scheme = c.tls ? 'wss' : 'ws';
+    $('#urlPreview').innerHTML = scheme + '://' + esc(c.host || '<host>') + ':' + c.port + (c.path.startsWith('/') ? c.path : '/' + c.path) + ' <b>· topic ' + esc(c.topic) + '/#</b>';
+  },
+
+  wire() {
+    $('#presetRow').addEventListener('click', e => {
+      const b = e.target.closest('[data-preset]');
+      if (b) this.applyPreset(b.dataset.preset);
+    });
+    ['bkLabel', 'bkHost', 'bkPort', 'bkPath', 'bkTopic'].forEach(id => $('#' + id).addEventListener('input', () => this.updatePreview()));
+    $('#bkTls').addEventListener('click', e => { const p = e.currentTarget; p.setAttribute('aria-pressed', String(p.getAttribute('aria-pressed') !== 'true')); this.updatePreview(); });
+    $('#bkSim').addEventListener('click', e => { const p = e.currentTarget; p.setAttribute('aria-pressed', String(p.getAttribute('aria-pressed') !== 'true')); });
+
+    $('#btnConnect').addEventListener('click', () => this.doConnect());
+    $('#btnDisconnect').addEventListener('click', () => { Broker.disconnect(); toast({ level: 'info', title: 'Disconnected', detail: 'Broker connection closed.' }); });
+    $('#btnSaveConn').addEventListener('click', () => {
+      const c = this.currentConfig();
+      if (!c.host) return toast({ level: 'info', title: 'Add a host first', detail: 'Enter a broker host before saving this connection.' });
+      Store.addConnection(c);
+      this.renderSaved();
+      toast({ level: 'ok', title: 'Connection saved', detail: c.label + ' will appear here next time you sign in.' });
+    });
+
+    $('#btnOpenDash').addEventListener('click', () => {
+      Store.setLastConfig(this.currentConfig());
+      Router.go('dashboard');
+    });
+    $('#btnSimDash').addEventListener('click', () => {
+      Broker.disconnect();
+      Router.go('dashboard');
+    });
+    $('#cnLogout').addEventListener('click', () => doLogout());
+  },
+
+  doConnect() {
+    const c = this.currentConfig();
+    if (!c.host) { toast({ level: 'info', title: 'Host required', detail: 'Pick a template or type a broker host to connect to.' }); $('#bkHost').focus(); return; }
+    Store.setLastConfig(c);
+    Broker.connect(c);
+  },
+
+  reflectStatus(evt) {
+    const orb = $('#statusOrb'), word = $('#statusWord'), desc = $('#statusDesc');
+    const s = Broker.status;
+    orb.dataset.s = s; word.dataset.s = s;
+    $('#btnDisconnect').disabled = s === 'offline';
+    if (s === 'offline') {
+      word.textContent = 'Offline'; desc.textContent = 'No broker connected. Choose a template and press Connect.';
+      orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M9.5 9.5A5 5 0 0 0 12 19a5 5 0 0 0 3.4-1.3"/></svg>';
+      $('#mBroker').textContent = '—'; $('#mLatency').textContent = '—'; $('#mTopic').textContent = '—'; $('#mMsgs').textContent = '0';
+    } else if (s === 'connecting') {
+      word.textContent = 'Connecting…'; desc.textContent = 'Opening a WebSocket to ' + (Broker.cfg ? Broker.cfg.host : '') + '…';
+      orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7 12a5 5 0 0 1 10 0"/><circle cx="12" cy="12" r="1.6"/></svg>';
+    } else if (s === 'online') {
+      const live = Broker.mode === 'live';
+      if (!live) {
+        word.textContent = 'Offline';
+        desc.textContent = evt && evt.reason ? evt.reason : 'No live broker connected.';
+        orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M9.5 9.5A5 5 0 0 0 12 19a5 5 0 0 0 3.4-1.3"/></svg>';
+        $('#mBroker').textContent = '—'; $('#mLatency').textContent = '—'; $('#mTopic').textContent = '—'; $('#mMsgs').textContent = '0';
+        return;
+      }
+      word.textContent = 'Online';
+      desc.textContent = 'Connected over WebSocket. Subscribed to ' + Broker.cfg.topic + '/#.';
+      orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7 12a5 5 0 0 1 10 0"/><circle cx="12" cy="12" r="1.6"/></svg>';
+      $('#mBroker').textContent = Broker.cfg ? Broker.cfg.host : '—';
+      $('#mLatency').textContent = Broker.latency != null ? Broker.latency + ' ms' : '—';
+      $('#mTopic').textContent = (Broker.cfg ? Broker.cfg.topic : 'scsrg/campus') + '/#';
+      toast(live
+        ? { level: 'ok', title: 'Broker online', detail: Broker.cfg.host + ' connected in ' + Broker.latency + ' ms. Waiting for zone readings…' }
+        : { level: 'warning', title: 'Broker offline', detail: (evt && evt.reason) || 'Connect a live broker to see zone readings.' });
+    }
+  },
+
+  onNode(evt) {
+    const list = $('#sensorList');
+    const nodes = [...Broker.seenNodes.entries()];
+    if (!nodes.length) return;
+    list.innerHTML = nodes.map(([id, info]) => {
+      const stale = now() - info.at > 4000;
+      return '<div class="sensor ' + (stale ? 'off' : 'on') + '">' +
+        '<span class="wifi">' + (stale ? I.wifioff : I.wifi) + '</span>' +
+        '<div><div class="nm">' + esc(nodeName(id)) + '</div><div class="meta mono">' + esc(info.topic) + '</div></div>' +
+        '<span class="st">' + (stale ? 'STALE' : 'CONNECTED') + '</span></div>';
+    }).join('');
+  },
+
+  renderSaved() {
+    const wrap = $('#savedWrap'), list = $('#savedList');
+    const conns = Store.data.connections;
+    wrap.hidden = !conns.length;
+    if (!conns.length) return;
+    list.innerHTML = conns.map(c =>
+      '<div class="saved-item"><div><div class="nm">' + esc(c.label) + '</div><div class="meta">' + esc(c.host) + ':' + c.port + esc(c.path) + '</div></div>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn btn-sm" data-load="' + c.id + '">Use</button>' +
+      '<button class="btn btn-sm" data-del="' + c.id + '" aria-label="Delete">' + I.trash + '</button></div>').join('');
+    list.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => {
+      const c = conns.find(x => x.id === b.dataset.load);
+      if (c) { this.fillForm(c); this.applyPreset('custom', { silent: true }); toast({ level: 'info', title: 'Loaded ' + c.label }); }
+    }));
+    list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { Store.removeConnection(b.dataset.del); this.renderSaved(); }));
+  },
+};
+function nodeName(id) {
+  const map = { IOT: 'IoT Lab', SRV: 'Server Room', ROB: 'Robotics Lab', DSL: 'Data Science Lab' };
+  return map[id] || id;
+}
+
+/* =====================================================================
+   TOASTS + OVERLAY (shared by connect + dashboard)
+   ===================================================================== */
+const toastBox = document.getElementById('toasts');
+let actx = null;
+function beep(kind) {
+  if (Dashboard.state && !Dashboard.state.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const seq = kind === 'critical' ? [[880, 0], [660, 0.16]] : kind === 'ok' ? [[660, 0], [880, 0.1]] : [[520, 0]];
+    seq.forEach(([f, d]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = f; o.connect(g); g.connect(actx.destination);
+      const t0 = actx.currentTime + d;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.13, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+      o.start(t0); o.stop(t0 + 0.18);
+    });
+  } catch (e) {}
+}
+function toast(opts) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.dataset.level = opts.level || 'info';
+  const ico = opts.level === 'critical' ? I.crit : opts.level === 'warning' ? I.warn : opts.level === 'ok' ? I.check : I.info;
+  el.innerHTML = '<div class="toast-ico">' + ico + '</div><div><div class="toast-t">' + esc(opts.title) + '</div>' +
+    (opts.detail ? '<div class="toast-d">' + esc(opts.detail) + '</div>' : '') +
+    (opts.action ? '<div class="toast-act"><button class="btn btn-sm btn-primary" data-act>' + esc(opts.action) + '</button></div>' : '') +
+    '</div><button class="toast-x" aria-label="Dismiss">' + I.x + '</button>';
+  const close = () => { if (el.classList.contains('leaving')) return; el.classList.add('leaving'); setTimeout(() => el.remove(), 220); };
+  el.querySelector('.toast-x').addEventListener('click', close);
+  const act = el.querySelector('[data-act]'); if (act) act.addEventListener('click', () => { opts.onAction && opts.onAction(); close(); });
+  if (opts.key) el.dataset.key = opts.key;
+  toastBox.appendChild(el);
+  while (toastBox.children.length > 4) toastBox.firstElementChild.remove();
+  if (opts.level !== 'critical') setTimeout(close, opts.ttl || 5200);
+}
+function clearToastsFor(key) { toastBox.querySelectorAll('[data-key="' + key + '"]').forEach(el => { el.classList.add('leaving'); setTimeout(() => el.remove(), 220); }); }
+function showOverlay(t, d) { $('#ovTitle').textContent = t; $('#ovText').textContent = d; $('#overlay').hidden = false; }
+function hideOverlay() { $('#overlay').hidden = true; }
+
+/* =====================================================================
+   LOGOUT
+   ===================================================================== */
+function doLogout() {
+  Broker.disconnect();
+  Store.clearSession();
+  Router.go('landing');
+  toast({ level: 'info', title: 'Signed out', detail: 'The broker connection was closed.' });
+}
+
+/* =====================================================================
+   DASHBOARD — same fusion engine as before, now fed by Broker events
+   ===================================================================== */
+const CFG = {
+  tick: 500, W: { fire: 40, gas: 25, water: 20, occ: 15 },
+  enterCrit: 65, exitCrit: 58, enterWarn: 30, exitWarn: 25,
+  flameDebounce: 3, gasWarmupMs: 30000, resolveHoldMs: 4000, reopenCooldownMs: 8000,
+  histLen: 64, offlineAfterMs: 5000,
+};
+const ZONE_DEFS = [
+  { id: 'IOT', name: 'IoT Lab', block: 'Block B · L2', profile: 'Soldering + flux fumes · high occupancy', baseOcc: 4 },
+  { id: 'SRV', name: 'Server Room', block: 'Block A · L1', profile: 'Electrical fire + AC condensate · high asset value', baseOcc: 0 },
+  { id: 'ROB', name: 'Robotics Lab', block: 'Block B · L3', profile: 'Battery off-gassing + cutting tools', baseOcc: 2 },
+  { id: 'DSL', name: 'Data Science Lab', block: 'Block C · L2', profile: 'GPU rack overheating · moderate occupancy', baseOcc: 3 },
+];
+const STAFF = [
+  { id: 'u_rahim', name: 'Rahim Uddin', role: 'staff' },
+  { id: 'u_nabila', name: 'Nabila Karim', role: 'staff' },
+  { id: 'u_admin', name: 'S. Mahmud', role: 'admin' },
+];
+
+const DB = { zones: new Map(), readings: [], incidents: [], acks: [], counters: { accepted: 0, rejected: 0, duplicates: 0, writes: 0 }, incidentSeq: 1, lastBackup: now() };
+
+const BE = {
+  bootAt: now(), listeners: [], rateWindow: [], paused: false,
+  on(fn) { this.listeners.push(fn); }, emit(e) { this.listeners.forEach(fn => fn(e)); },
+  registerZone(def) {
+    DB.zones.set(def.id, {
+      id: def.id, name: def.name, block: def.block, profile: def.profile, apiKey: 'zk_' + def.id.toLowerCase(),
+      raw: { flame: 0, gas: 0, water: 0, people: def.baseOcc }, norm: { fire: 0, gas: 0, water: 0, occ: 0 },
+      flameStreak: 0, online: true, lastSeen: now(), bootAt: now(), score: 0, state: 'SAFE', history: [],
+      criticalSince: null, openIncident: null, lastClosedAt: 0, belowSince: null, override: null, reportFloor: null,
+      actuation: { buzzer: false, led: 'green', relay: false }, viaBroker: false,
+    });
+  },
+  ingest(payload) {
+    if (this.paused) return { ok: false, code: 503 };
+    const z = DB.zones.get(payload.zone_id);
+    if (!z) return { ok: false, code: 404 };
+    const r = payload.readings || {};
+    const bad = [];
+    if (!(r.flame === 0 || r.flame === 1)) bad.push('flame');
+    if (!(typeof r.gas === 'number' && r.gas >= 0 && r.gas <= 1023)) bad.push('gas_adc');
+    if (!(typeof r.water === 'number' && r.water >= 0 && r.water <= 1023)) bad.push('water_adc');
+    if (!(Number.isInteger(r.people) && r.people >= 0 && r.people <= 60)) bad.push('people');
+    if (bad.length) { DB.counters.rejected++; this.emit({ type: 'rejected', zone: z, fields: bad }); return { ok: false, code: 422, fields: bad }; }
+    DB.counters.accepted++; this.rateWindow.push(now()); z.lastSeen = now();
+    if (!z.online) { z.online = true; this.emit({ type: 'online', zone: z }); }
+    z.raw = { flame: r.flame, gas: r.gas, water: r.water, people: r.people };
+    z.viaBroker = !!payload.viaBroker;
+    this.compute(z);
+    DB.readings.push({ zone_id: z.id, ts: now(), ...z.raw, score: z.score });
+    if (DB.readings.length > 4000) DB.readings.splice(0, 1000);
+    DB.counters.writes++;
+    return { ok: true, code: 202 };
+  },
+  compute(z) {
+    const t = now();
+    if (z.raw.flame === 1) z.flameStreak++; else z.flameStreak = 0;
+    const fire = z.flameStreak >= CFG.flameDebounce ? 1 : 0;
+    const warming = (t - z.bootAt) < CFG.gasWarmupMs;
+    let gas = warming ? 0 : clamp(z.raw.gas / 1023, 0, 1);
+    let water = clamp(z.raw.water / 1023, 0, 1);
+    const occ = clamp(z.raw.people / 4, 0, 1);
+    if (z.reportFloor && z.reportFloor.until > t) {
+      const life = (z.reportFloor.until - t) / z.reportFloor.span;
+      const v = z.reportFloor.value * life;
+      if (z.reportFloor.channel === 'gas') gas = Math.max(gas, v);
+      if (z.reportFloor.channel === 'water') water = Math.max(water, v);
+    } else if (z.reportFloor) z.reportFloor = null;
+    z.warming = warming; z.norm = { fire, gas, water, occ };
+    z.score = Math.round(clamp(CFG.W.fire * fire + CFG.W.gas * gas + CFG.W.water * water + CFG.W.occ * occ, 0, 100));
+    z.history.push({ t, s: z.score }); if (z.history.length > CFG.histLen) z.history.shift();
+    this.classify(z);
+  },
+  classify(z) {
+    const t = now(); let next = z.state;
+    if (z.override) next = z.override.state;
+    else if (z.state === 'CRITICAL') next = z.score < CFG.exitCrit ? (z.score >= CFG.enterWarn ? 'WARNING' : 'SAFE') : 'CRITICAL';
+    else if (z.state === 'WARNING') next = z.score >= CFG.enterCrit ? 'CRITICAL' : (z.score < CFG.exitWarn ? 'SAFE' : 'WARNING');
+    else next = z.score >= CFG.enterCrit ? 'CRITICAL' : (z.score >= CFG.enterWarn ? 'WARNING' : 'SAFE');
+    if (z.state === 'OFFLINE') next = z.score >= CFG.enterCrit ? 'CRITICAL' : (z.score >= CFG.enterWarn ? 'WARNING' : 'SAFE');
+    if (next !== z.state) this.transition(z, next);
+    z.actuation = { buzzer: z.state === 'CRITICAL', relay: z.state === 'CRITICAL', led: z.state === 'CRITICAL' ? 'red' : z.state === 'WARNING' ? 'yellow' : z.state === 'OFFLINE' ? 'off' : 'green' };
+    if (z.openIncident && z.state !== 'CRITICAL') { if (!z.belowSince) z.belowSince = t; else if (t - z.belowSince >= CFG.resolveHoldMs) this.resolveIncident(z); }
+    else if (z.state === 'CRITICAL') z.belowSince = null;
+  },
+  transition(z, next) {
+    const prev = z.state; z.state = next;
+    if (next === 'CRITICAL') {
+      z.criticalSince = now();
+      const cool = now() - z.lastClosedAt < CFG.reopenCooldownMs;
+      if (!z.openIncident && !cool) this.openIncident(z);
+      else if (z.openIncident) this.logEvent(z.openIncident, 're-escalated', 'Risk crossed 65 again while the incident was still open');
+    }
+    if (prev === 'CRITICAL' && next !== 'CRITICAL') z.criticalSince = null;
+    this.emit({ type: 'state', zone: z, prev, next });
+  },
+  openIncident(z) {
+    const hazards = this.activeHazards(z);
+    const inc = { id: 'INC-' + String(DB.incidentSeq++).padStart(4, '0'), zone_id: z.id, zone_name: z.name, hazards, peak: z.score, opened_at: now(), status: 'OPEN', ack_by: null, ack_at: null, resolved_at: null, timeline: [] };
+    DB.incidents.unshift(inc); DB.counters.writes++; z.openIncident = inc;
+    this.logEvent(inc, 'detected', z.override ? 'Opened by manual override from ' + z.override.by + ' — no sensor threshold was crossed (risk ' + z.score + ').' : 'Risk ' + z.score + ' — ' + (hazards.join(' + ') || 'combined signals') + '. Buzzer, red LED and relay cut-off engaged.');
+    this.emit({ type: 'incident_open', zone: z, incident: inc });
+  },
+  resolveIncident(z) {
+    const inc = z.openIncident; if (!inc) return;
+    inc.resolved_at = now(); inc.status = 'RESOLVED'; z.openIncident = null; z.belowSince = null; z.lastClosedAt = now(); DB.counters.writes++;
+    this.logEvent(inc, 'recovered', 'Risk fell to ' + z.score + ' and held below 58. Buzzer, relay and LED reset.');
+    this.emit({ type: 'incident_resolved', zone: z, incident: inc });
+  },
+  activeHazards(z) { const h = []; if (z.norm.fire) h.push('fire'); if (z.norm.gas >= 0.4) h.push('gas'); if (z.norm.water >= 0.4) h.push('flood'); if (!h.length && z.norm.occ > 0) h.push('occupancy'); return h; },
+  acknowledge(incidentId, user) {
+    const inc = DB.incidents.find(i => i.id === incidentId); if (!inc) return { ok: false, code: 404 };
+    if (inc.ack_by) return { ok: false, code: 409, error: 'already_acknowledged', by: inc.ack_by };
+    inc.ack_by = user.name; inc.ack_at = now(); if (inc.status === 'OPEN') inc.status = 'ACKNOWLEDGED';
+    DB.acks.push({ incident_id: inc.id, user_id: user.id, ts: inc.ack_at }); DB.counters.writes++;
+    this.logEvent(inc, 'acknowledged', 'Acknowledged by ' + user.name + ' (' + user.role + ')');
+    this.emit({ type: 'ack', incident: inc, user }); return { ok: true, code: 200 };
+  },
+  override(zoneId, state, user) {
+    if (!user || user.role !== 'admin') return { ok: false, code: 403, error: 'admin_role_required' };
+    const z = DB.zones.get(zoneId); if (!z) return { ok: false, code: 404 };
+    if (state === null) { z.override = null; if (z.openIncident) this.logEvent(z.openIncident, 'override', 'Manual override cleared by ' + user.name); this.classify(z); this.emit({ type: 'override', zone: z, cleared: true, user }); return { ok: true, code: 200 }; }
+    z.override = { state, by: user.name, at: now() }; this.classify(z);
+    if (z.openIncident) this.logEvent(z.openIncident, 'override', 'Manual ' + state + ' override by ' + user.name + ' — logged as operator action, not a sensor trigger');
+    this.emit({ type: 'override', zone: z, state, user }); return { ok: true, code: 200 };
+  },
+  logEvent(inc, kind, text) { inc.timeline.push({ kind, text, ts: now() }); if (inc.peak != null) { const z = DB.zones.get(inc.zone_id); if (z && z.score > inc.peak) inc.peak = z.score; } },
+  zoneStatus() { return [...DB.zones.values()]; },
+  ranking() {
+    const crit = this.zoneStatus().filter(z => z.state === 'CRITICAL');
+    crit.sort((a, b) => b.score !== a.score ? b.score - a.score : b.norm.occ !== a.norm.occ ? b.norm.occ - a.norm.occ : (a.criticalSince || 0) - (b.criticalSince || 0));
+    return crit;
+  },
+  watchdog() { const t = now(); DB.zones.forEach(z => { if (z.online && t - z.lastSeen > CFG.offlineAfterMs) { z.online = false; const prev = z.state; z.state = 'OFFLINE'; z.actuation = { buzzer: false, relay: false, led: 'off' }; this.emit({ type: 'offline', zone: z, prev }); } }); },
+  ingestRate() { const cut = now() - 2000; this.rateWindow = this.rateWindow.filter(t => t > cut); return Math.round(this.rateWindow.length / 2); },
+  restart(done) {
+    this.paused = true; DB.zones.forEach(z => { z.history = []; });
+    setTimeout(() => {
+      DB.zones.forEach(z => { const open = DB.incidents.find(i => i.zone_id === z.id && i.status !== 'RESOLVED'); z.openIncident = open || null; z.state = open ? 'CRITICAL' : 'SAFE'; z.bootAt = now() - CFG.gasWarmupMs; z.lastSeen = now(); z.online = true; });
+      this.paused = false; this.bootAt = now(); done && done();
+    }, 1600);
+  },
+};
+
+/* ------------------------- sensor layer (feeds BE.ingest via Broker) --- */
+const Nodes = {
+  seq: 0, targets: {}, faults: {}, phantoms: [],
+  init() { ZONE_DEFS.forEach(d => { BE.registerZone(d); this.targets[d.id] = { flame: 0, gas: 40, water: 20, people: d.baseOcc }; }); },
+  set(zoneId, patch) { Object.assign(this.targets[zoneId], patch); },
+  tickLocal() {
+    // Keep the dashboard quiet until a live broker starts feeding data.
+    if (Broker.mode !== 'live') return;
+    this.seq++;
+    DB.zones.forEach(z => {
+      // only back off once a live broker is actually feeding this
+      // zone — if the operator opened the dashboard without connecting anything, this
+      // loop stays paused so nothing simulates locally
+      if (now() - z.lastSeen < 1600) return;
+      const f = this.faults[z.id] || {};
+      if (f.disconnected) return;
+      const t = this.targets[z.id]; const r = z.raw;
+      const ease = (cur, tgt, k) => cur + (tgt - cur) * k + (Math.random() - 0.5) * 6;
+      const gas = clamp(Math.round(ease(r.gas, t.gas, 0.18)), 0, 1023);
+      const water = clamp(Math.round(ease(r.water, t.water, 0.22)), 0, 1023);
+      let flame = t.flame; if (t.flicker) flame = Math.random() < 0.45 ? 1 : 0;
+      BE.ingest({ zone_id: z.id, api_key: z.apiKey, seq: this.seq, readings: { flame, gas: f.impossible ? -1 : gas, water, people: t.people } });
+    });
+  },
+  fromBroker(nodeId, payload) {
+    if (!DB.zones.has(nodeId)) return;
+    const z = DB.zones.get(nodeId);
+    const t = this.targets[nodeId] || {};
+    const r = (payload && payload.readings) || {
+      flame: t.flame || 0,
+      gas: clamp(Math.round(z.raw.gas + (t.gas - z.raw.gas) * 0.3 + (Math.random() - 0.5) * 8), 0, 1023),
+      water: clamp(Math.round(z.raw.water + (t.water - z.raw.water) * 0.3 + (Math.random() - 0.5) * 8), 0, 1023),
+      people: t.people != null ? t.people : z.raw.people,
+    };
+    BE.ingest({ zone_id: nodeId, api_key: z.apiKey, seq: (payload && payload.seq) || ++this.seq, readings: r, viaBroker: true });
+  },
+  spawnPhantoms(n) { for (let i = 0; i < n; i++) { const id = 'PZ' + String(i + 1).padStart(2, '0'); if (DB.zones.has(id)) continue; BE.registerZone({ id, name: 'Sim zone ' + (i + 1), block: 'load test', profile: '', baseOcc: 0 }); DB.zones.get(id).phantom = true; this.phantoms.push(id); } },
+  clearPhantoms() { this.phantoms.forEach(p => DB.zones.delete(p)); this.phantoms = []; },
+};
+
+const SCENARIOS = [
+  { label: 'Soldering fire — IoT Lab', icon: I.flame, run: () => { Nodes.set('IOT', { flame: 1, flicker: false, gas: 620, people: 5 }); toast({ level: 'info', title: 'IoT Lab: flame sensor going HIGH', detail: 'Backend needs 3 consecutive samples before it counts as fire.' }); } },
+  { label: 'Brief flicker — IoT Lab', icon: I.flame, run: () => { Nodes.set('IOT', { flicker: true }); setTimeout(() => Nodes.set('IOT', { flicker: false, flame: 0 }), 1200); toast({ level: 'info', title: 'Sub-debounce flicker injected', detail: 'Shorter than the debounce window — expect no trigger.' }); } },
+  { label: 'AC condensate leak — Server Room', icon: I.drop, run: () => { Nodes.set('SRV', { water: 900, gas: 120 }); toast({ level: 'info', title: 'Server Room: water level rising' }); } },
+  { label: 'Battery off-gassing — Robotics', icon: I.wave, run: () => { Nodes.set('ROB', { gas: 880, people: 3 }); } },
+  { label: 'GPU rack overheat — Data Science', icon: I.bolt, run: () => { Nodes.set('DSL', { gas: 700, people: 4 }); setTimeout(() => Nodes.set('DSL', { flame: 1 }), 3500); } },
+  { label: 'Two zones critical at once', icon: I.stack, run: () => { Nodes.set('IOT', { flame: 1, gas: 640, people: 6 }); Nodes.set('SRV', { water: 940, gas: 300 }); } },
+  { label: 'Three zones critical', icon: I.stack, run: () => { Nodes.set('IOT', { flame: 1, gas: 600, people: 6 }); Nodes.set('SRV', { water: 930, gas: 260 }); Nodes.set('ROB', { gas: 980, flame: 1, people: 2 }); } },
+  { label: 'Clear all hazards', icon: I.check, run: () => { ZONE_DEFS.forEach(d => Nodes.set(d.id, { flame: 0, flicker: false, gas: 40, water: 20, people: d.baseOcc })); Object.keys(Nodes.faults).forEach(k => delete Nodes.faults[k]); toast({ level: 'ok', title: 'All hazard sources removed' }); } },
+  { label: 'Disconnect IoT Lab node', icon: I.plug, run: () => { Nodes.faults.IOT = Object.assign(Nodes.faults.IOT || {}, { disconnected: true }); toast({ level: 'warning', title: 'IoT Lab node stopped publishing', detail: 'After 5 s the zone shows OFFLINE — never a silent SAFE.' }); } },
+  { label: 'Reconnect IoT Lab node', icon: I.plug, run: () => { if (Nodes.faults.IOT) delete Nodes.faults.IOT.disconnected; } },
+  { label: 'Two staff acknowledge at once', icon: I.users2, run: () => { const open = DB.incidents.find(i => i.status === 'OPEN'); if (!open) return toast({ level: 'info', title: 'Nothing to acknowledge' }); const a = BE.acknowledge(open.id, STAFF[0]); const b = BE.acknowledge(open.id, STAFF[1]); toast({ level: b.ok ? 'warning' : 'ok', title: 'Race test: ' + (b.ok ? 'both writes landed' : 'exactly one recorded'), detail: 'Rahim → ' + a.code + ' · Nabila → ' + b.code }); } },
+  { label: 'Load test: +30 zones', icon: I.stack, run: () => { if (Nodes.phantoms.length) { Nodes.clearPhantoms(); return toast({ level: 'ok', title: 'Load test stopped' }); } Nodes.spawnPhantoms(30); toast({ level: 'info', title: '30 simulated zones added' }); } },
+  { label: 'Restart the backend', icon: I.power, run: () => { showOverlay('Backend restarting', 'Rebuilding zone states from the database…'); BE.restart(() => { hideOverlay(); toast({ level: 'ok', title: 'Backend back up', detail: 'Recovered open incidents from the database.' }); }); } },
+  { label: 'Staff hits an admin endpoint', icon: I.lock, run: () => { const res = BE.override('IOT', 'CRITICAL', STAFF[0]); toast({ level: res.ok ? 'warning' : 'ok', title: 'Direct API call as staff → ' + res.code, detail: res.ok ? 'Blocked at the UI only — bug.' : 'Refused server-side, not just hidden.' }); } },
+];
+
+const HAZARD_WORDS = { gas: ['gas', 'smell', 'fume', 'fumes', 'smoke', 'odour', 'odor'], fire: ['fire', 'flame', 'burning', 'sparks', 'spark'], water: ['water', 'leak', 'leaking', 'flood', 'condensate', 'dripping', 'wet'] };
+const SEVERITY_WORDS = { high: ['heavy', 'strong', 'thick', 'lots', 'bad', 'serious', 'spreading'], low: ['faint', 'slight', 'mild', 'small', 'little', 'not sure', 'maybe'] };
+function interpret(text) {
+  const t = text.toLowerCase(); let zone = null;
+  DB.zones.forEach(z => { if (z.phantom || zone) return; const n = z.name.toLowerCase(); if (t.includes(n) || t.includes(n.replace(' lab', ''))) zone = z; });
+  if (!zone && /server|rack|cooling/.test(t)) zone = DB.zones.get('SRV');
+  if (!zone && /solder|bench|iot/.test(t)) zone = DB.zones.get('IOT');
+  if (!zone && /robot|battery|weld/.test(t)) zone = DB.zones.get('ROB');
+  if (!zone && /gpu|data science/.test(t)) zone = DB.zones.get('DSL');
+  let hazard = null, hits = 0;
+  Object.entries(HAZARD_WORDS).forEach(([h, ws]) => { const n = ws.filter(w => t.includes(w)).length; if (n > hits) { hits = n; hazard = h; } });
+  let sev = 0.55;
+  if (SEVERITY_WORDS.high.some(w => t.includes(w))) sev = 0.8;
+  if (SEVERITY_WORDS.low.some(w => t.includes(w))) sev = 0.35;
+  const confidence = clamp((zone ? 0.45 : 0) + (hazard ? 0.4 : 0) + Math.min(hits, 2) * 0.08, 0, 0.98);
+  return { zone, hazard, severity: sev, confidence };
+}
+function validateReport(p) {
+  return [
+    { ok: !!p.zone, label: 'Names a registered zone', got: p.zone ? p.zone.name : 'no zone matched' },
+    { ok: !!p.hazard, label: 'Maps to a known hazard channel', got: p.hazard || 'none found' },
+    { ok: p.severity >= 0 && p.severity <= 1, label: 'Severity inside 0.0–1.0', got: p.severity.toFixed(2) },
+    { ok: p.confidence >= 0.6, label: 'Confidence ≥ 0.60', got: p.confidence.toFixed(2) },
+    { ok: !!p.zone && p.zone.online, label: 'Zone node is online', got: p.zone ? (p.zone.online ? 'online' : 'OFFLINE') : '—' },
+    { ok: p.hazard !== 'fire', label: 'Not a fire claim (needs the sensor)', got: p.hazard === 'fire' ? 'fire claimed by text alone' : 'ok' },
+  ];
+}
+
+const Dashboard = {
+  entered: false,
+  state: { role: 'staff', user: STAFF[0], sound: true, cards: new Map(), expanded: new Set(), filters: { q: '', zone: '', status: '', range: 0 }, lastRankKey: '' },
+
+  onEnter() {
+    $('#cnUser'); // no-op guard
+    if (!this.entered) { this.build(); this.entered = true; }
+    this.applyBrokerLabel();
+    this.render();
+  },
+
+  build() {
+    Nodes.init();
+    ZONE_DEFS.forEach(d => buildCard(this.state, DB.zones.get(d.id)));
+    $('#gridHint').textContent = ZONE_DEFS.length + ' monitored';
+    $('#incZone').innerHTML = '<option value="">All zones</option>' + ZONE_DEFS.map(d => '<option value="' + d.id + '">' + d.name + '</option>').join('');
+    $('#scenarioGrid').innerHTML = SCENARIOS.map((s, i) => '<button class="scn" data-scn="' + i + '">' + s.icon + '<span>' + esc(s.label) + '</span></button>').join('');
+    renderIncidents(this.state);
+
+    BE.on(evt => {
+      if (evt.type === 'incident_open') {
+        beep('critical');
+        toast({ level: 'critical', key: evt.incident.id, title: evt.zone.name + ' is CRITICAL', detail: 'Risk ' + evt.zone.score + ' · ' + (evt.incident.hazards.join(' + ') || 'combined signals') + '. Relay cut, buzzer on.', action: 'Acknowledge', onAction: () => doAck(this.state, evt.incident.id) });
+      }
+      if (evt.type === 'incident_resolved') { beep('ok'); clearToastsFor(evt.incident.id); toast({ level: 'ok', title: evt.zone.name + ' recovered', detail: evt.incident.id + ' closed after ' + fmtDur(evt.incident.resolved_at - evt.incident.opened_at) + '.' }); }
+      if (evt.type === 'ack') clearToastsFor(evt.incident.id);
+      if (evt.type === 'offline') toast({ level: 'warning', title: evt.zone.name + ' node is OFFLINE', detail: 'Last known state was ' + evt.prev + ' — never reported as SAFE.' });
+      if (evt.type === 'rejected') { if (toastBox.querySelector('[data-key="rej-' + evt.zone.id + '"]')) return; toast({ key: 'rej-' + evt.zone.id, level: 'warning', title: 'Reading rejected · 422', detail: evt.zone.name + ' sent out-of-range ' + evt.fields.join(', ') + '.', ttl: 4200 }); }
+    });
+
+    Broker.on(evt => {
+      if (evt.type === 'message') { Nodes.fromBroker(evt.nodeId, evt.payload); this.markViaBroker(evt.nodeId); }
+      if (evt.type === 'status') { this.applyBrokerLabel(evt); }
+    });
+
+    document.addEventListener('click', e => {
+      if (Router.current !== 'dashboard') return;
+      const ack = e.target.closest('[data-ack]'); if (ack) { doAck(this.state, ack.dataset.ack); return; }
+      const ov = e.target.closest('[data-ov]'); if (ov) { const res = BE.override(ov.dataset.ov, 'CRITICAL', this.state.user); toast(res.ok ? { level: 'warning', title: 'Manual cut-off engaged', detail: DB.zones.get(ov.dataset.ov).name + ' forced CRITICAL by ' + this.state.user.name + '.' } : { level: 'info', title: 'Blocked · ' + res.code }); this.render(); return; }
+      const cov = e.target.closest('[data-clear-ov]'); if (cov) { BE.override(cov.dataset.clearOv, null, this.state.user); this.render(); return; }
+      const scn = e.target.closest('[data-scn]'); if (scn) { SCENARIOS[+scn.dataset.scn].run(); return; }
+      const row = e.target.closest('[data-inc]'); if (row) { const id = row.dataset.inc; this.state.expanded.has(id) ? this.state.expanded.delete(id) : this.state.expanded.add(id); renderIncidents(this.state); return; }
+    });
+
+    $('#roleStaff').addEventListener('click', () => this.setRole('staff'));
+    $('#roleAdmin').addEventListener('click', () => this.setRole('admin'));
+    $('#themeBtn').addEventListener('click', () => { const dark = document.documentElement.dataset.theme === 'dark'; document.documentElement.dataset.theme = dark ? 'light' : 'dark'; $('#themeLabel').textContent = dark ? 'Dark' : 'Light'; });
+    $('#soundBtn').addEventListener('click', e => { this.state.sound = !this.state.sound; e.currentTarget.setAttribute('aria-pressed', String(this.state.sound)); if (this.state.sound) beep('info'); });
+    $('#dashLogout').addEventListener('click', () => doLogout());
+    $('#linkPill').addEventListener('click', () => Router.go('connect'));
+
+    $('#incSearch').addEventListener('input', e => { this.state.filters.q = e.target.value; renderIncidents(this.state); });
+    $('#incZone').addEventListener('change', e => { this.state.filters.zone = e.target.value; renderIncidents(this.state); });
+    $('#incStatus').addEventListener('change', e => { this.state.filters.status = e.target.value; renderIncidents(this.state); });
+    $('#incRange').addEventListener('change', e => { this.state.filters.range = +e.target.value; renderIncidents(this.state); });
+    $('#exportBtn').addEventListener('click', () => exportCSV(this.state));
+    $('#reportSend').addEventListener('click', () => submitReport(this.state));
+    $('#reportSample').addEventListener('click', () => { $('#reportTa').value = 'Strong smell of gas near the IoT Lab bench, not sure how bad'; $('#reportTa').focus(); });
+    $('#reportTa').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitReport(this.state); });
+
+    setInterval(() => { Nodes.tickLocal(); BE.watchdog(); this.render(); }, CFG.tick);
+    setInterval(() => { $('#clock').textContent = fmtClock(now()); $('#footBackup').textContent = 'Last backup ' + fmtClock(DB.lastBackup) + ' · nightly sqlite3 .backup'; }, 1000);
+    $('#clock').textContent = fmtClock(now());
+    this.render();
+  },
+
+  markViaBroker(nodeId) {
+    const z = DB.zones.get(nodeId);
+    if (z) z.viaBroker = true;
+  },
+
+  applyBrokerLabel(evt) {
+    const pill = $('#linkPill'), text = $('#linkText'), foot = $('#footLink');
+    let mode = 'offline', label = 'OFFLINE';
+    if (Broker.status === 'connecting') { mode = 'connecting'; label = 'CONNECTING'; }
+    else if (Broker.status === 'online' && Broker.mode === 'live') { mode = 'online'; label = 'LIVE · ' + (Broker.cfg ? Broker.cfg.host.split('.')[0].toUpperCase() : 'MQTT'); }
+    
+    pill.dataset.link = mode; text.textContent = label;
+    foot.textContent = mode === 'online' ? 'Connected to ' + Broker.cfg.host + ' · ' + Broker.msgCount + ' messages' : 'Offline mode — connect a broker to see live traffic';
+  },
+
+  setRole(role) {
+    this.state.role = role; this.state.user = role === 'admin' ? STAFF[2] : STAFF[0];
+    $('#roleStaff').setAttribute('aria-pressed', String(role === 'staff'));
+    $('#roleAdmin').setAttribute('aria-pressed', String(role === 'admin'));
+    $('#healthPanel').hidden = role !== 'admin'; $('#scenarioPanel').hidden = role !== 'admin';
+    this.render();
+    toast({ level: 'info', title: 'Signed in as ' + this.state.user.name, detail: role === 'admin' ? 'Admin: overrides, health and raw history unlocked.' : 'Security staff: view and acknowledge only.', ttl: 3600 });
+  },
+
+  render() {
+    BE.zoneStatus().filter(z => !z.phantom).forEach(z => updateCard(this.state, z));
+    renderLadder(this.state);
+    renderPredicted();
+    renderIncidents(this.state);
+    renderHealth(this.state);
+  },
+};
+
+/* ---------- rendering helpers (zone cards, ladder, incidents, health) --- */
+function buildCard(state, z) {
+  const el = document.createElement('article'); el.className = 'zcard'; el.dataset.zone = z.id;
+  el.innerHTML = '<div class="zc-head"><div class="zc-title"><div class="zc-name">' + esc(z.name) + '</div><div class="zc-meta">' + esc(z.block) + ' · node ' + z.id + '</div><div style="margin-top:7px"><span class="state-chip" data-state="SAFE"></span></div></div><div class="zc-score"><div class="n" data-score>0</div><div class="d">risk</div></div></div><div class="zc-spark"><span class="spark-legend">last 32 s</span>' + sparkSVG() + '</div><div class="channels">' + chanRow('fire', 'Fire') + chanRow('gas', 'Gas') + chanRow('water', 'Water') + chanRow('occ', 'People') + '</div><div class="zc-foot" data-foot></div>';
+  $('#zoneGrid').appendChild(el);
+  const refs = { el, chip: el.querySelector('.state-chip'), score: el.querySelector('[data-score]'), spark: el.querySelector('.spark'), foot: el.querySelector('[data-foot]'), chans: { fire: el.querySelector('[data-chan="fire"]'), gas: el.querySelector('[data-chan="gas"]'), water: el.querySelector('[data-chan="water"]'), occ: el.querySelector('[data-chan="occ"]') } };
+  state.cards.set(z.id, refs); return refs;
+}
+function chanRow(key, label) { return '<div class="chan" data-chan="' + key + '"><span class="chan-name">' + label + '</span><span class="chan-bar"><span class="chan-fill"></span></span><span class="chan-val">0</span></div>'; }
+function sparkSVG() { return '<svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">' + sparkInner([]) + '</svg>'; }
+function sparkInner(hist) {
+  const y = v => 40 - (clamp(v, 0, 100) / 100) * 38 - 1;
+  let out = '<line x1="0" y1="' + y(65) + '" x2="100" y2="' + y(65) + '" stroke="var(--uft-danger)" stroke-width="1" stroke-dasharray="3 3" opacity="0.55" vector-effect="non-scaling-stroke"/>' +
+    '<line x1="0" y1="' + y(30) + '" x2="100" y2="' + y(30) + '" stroke="var(--uft-warning)" stroke-width="1" stroke-dasharray="3 3" opacity="0.4" vector-effect="non-scaling-stroke"/>';
+  if (hist.length < 2) return out;
+  const n = CFG.histLen;
+  const pts = hist.map((h, i) => [(i / (n - 1)) * 100, y(h.s)]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(2) + ' ' + p[1].toFixed(2)).join(' ');
+  const area = line + ' L' + pts[pts.length - 1][0].toFixed(2) + ' 40 L' + pts[0][0].toFixed(2) + ' 40 Z';
+  const last = hist[hist.length - 1].s; const col = last >= 65 ? 'var(--uft-danger)' : last >= 30 ? 'var(--uft-warning)' : 'var(--uft-success)';
+  out += '<path d="' + area + '" fill="' + col + '" opacity="0.13"/><path d="' + line + '" fill="none" stroke="' + col + '" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+  out += '<circle cx="' + pts[pts.length - 1][0].toFixed(2) + '" cy="' + pts[pts.length - 1][1].toFixed(2) + '" r="2" fill="' + col + '" vector-effect="non-scaling-stroke"/>'; return out;
+}
+const STATE_ICON = { SAFE: I.safe, WARNING: I.warn, CRITICAL: I.crit, OFFLINE: I.off };
+function trendOf(z) { const h = z.history; if (h.length < 8) return 0; const a = h.slice(-4).reduce((s, x) => s + x.s, 0) / 4; const b = h.slice(-8, -4).reduce((s, x) => s + x.s, 0) / 4; return a - b; }
+function predictOf(z) { if (!z.online) return null; const slope = clamp(trendOf(z) / 12, -1, 1); const zc = -4.4 + 4.9 * (z.score / 100) + 1.1 * slope + 1.7 * z.norm.gas + 2.3 * z.norm.fire + 0.5 * z.norm.occ; return clamp(1 / (1 + Math.exp(-zc)), 0, 0.99); }
+
+function updateCard(state, z) {
+  const c = state.cards.get(z.id); if (!c) return;
+  const st = z.state;
+  if (c.el.dataset.state !== st) { c.el.dataset.state = st; if (st === 'CRITICAL') { c.el.classList.remove('flash'); void c.el.offsetWidth; c.el.classList.add('flash'); } }
+  c.chip.dataset.state = st; c.chip.innerHTML = STATE_ICON[st] + '<span>' + st + '</span>';
+  c.score.textContent = z.online ? z.score : '––';
+  c.score.style.color = st === 'CRITICAL' ? 'var(--uft-danger)' : st === 'WARNING' ? 'var(--uft-warning)' : st === 'OFFLINE' ? 'var(--color-text-subtle)' : 'var(--color-text)';
+  c.spark.innerHTML = sparkInner(z.history);
+  const chanCfg = [['fire', z.norm.fire, z.norm.fire ? 'DETECTED' : (z.flameStreak ? z.flameStreak + '/3' : 'clear'), 'var(--uft-danger)'], ['gas', z.norm.gas, z.warming ? 'warm-up' : Math.round(z.norm.gas * 100) + '%', 'var(--chart-6)'], ['water', z.norm.water, Math.round(z.norm.water * 100) + '%', 'var(--chart-5)'], ['occ', z.norm.occ, z.raw.people + (z.raw.people === 1 ? ' person' : ' people'), 'var(--chart-3)']];
+  chanCfg.forEach(([k, v, label, col]) => { const row = c.chans[k]; const fill = row.querySelector('.chan-fill'); fill.style.width = (z.online ? clamp(v, 0, 1) * 100 : 0) + '%'; fill.style.background = col; row.querySelector('.chan-val').textContent = z.online ? label : '—'; row.dataset.muted = (k === 'gas' && z.warming) ? 'true' : 'false'; });
+  const tags = [];
+  if (!z.online) tags.push('<span class="tag">' + I.off + 'Node silent since ' + fmtClock(z.lastSeen) + '</span>');
+  if (z.online && z.viaBroker) tags.push('<span class="tag" data-kind="mqtt">' + I.wifi + 'via broker</span>');
+  if (z.online && z.actuation.relay) tags.push('<span class="tag" style="color:var(--uft-danger)">' + I.bolt + 'Relay cut · buzzer on</span>');
+  const tr = trendOf(z); if (z.online && tr > 3 && z.state !== 'CRITICAL') tags.push('<span class="tag" data-kind="trend">' + I.trend + 'Trending up +' + tr.toFixed(0) + '</span>');
+  if (z.reportFloor && z.reportFloor.until > now()) tags.push('<span class="tag" data-kind="report">' + I.note + 'Staff report · ' + z.reportFloor.channel + '</span>');
+  if (z.override) tags.push('<span class="tag" data-kind="override">' + I.shield + 'Override ' + z.override.state + ' · ' + esc(z.override.by) + '</span>');
+  if (z.openIncident && z.openIncident.ack_by) tags.push('<span class="tag" data-kind="ack">' + I.check + 'Ack ' + esc(z.openIncident.ack_by) + '</span>');
+  let actions = '<span class="spacer"></span>';
+  if (z.openIncident && !z.openIncident.ack_by) actions += '<button class="btn btn-sm btn-danger" data-ack="' + z.openIncident.id + '">Acknowledge</button>';
+  if (Dashboard.state.role === 'admin') actions += z.override ? '<button class="btn btn-sm" data-clear-ov="' + z.id + '">Clear override</button>' : '<button class="btn btn-sm" data-ov="' + z.id + '">Force cut-off</button>';
+  c.foot.innerHTML = tags.join('') + actions;
+}
+
+function rankReason(z, i, list) {
+  if (i === 0) { const parts = ['highest risk on campus (' + z.score + ')']; if (z.raw.people > 0) parts.push(z.raw.people + ' inside'); parts.push('critical for ' + fmtDur(now() - (z.criticalSince || now()))); return 'First because ' + parts.join(' · '); }
+  const above = list[i - 1];
+  if (above.score !== z.score) return 'Behind ' + above.name + ' on risk (' + z.score + ' vs ' + above.score + ')';
+  if (above.norm.occ !== z.norm.occ) return 'Same risk as ' + above.name + ', fewer people inside (' + z.raw.people + ' vs ' + above.raw.people + ')';
+  return 'Same risk and occupancy as ' + above.name + ', went critical later';
+}
+function keyChips(z, inc, acked) { return '<span class="keychip">risk <b>' + z.score + '</b></span><span class="keychip">' + I.people + '<b>' + z.raw.people + '</b></span><span class="keychip">critical <b>' + fmtDur(now() - (z.criticalSince || now())) + '</b></span>' + (acked ? '<span class="keychip" style="color:var(--color-text-accent)">ack <b>' + esc(inc.ack_by.split(' ')[0]) + '</b></span>' : ''); }
+function rungHTML(z, i, list) {
+  const inc = z.openIncident, acked = inc && inc.ack_by;
+  return '<div class="rung' + (i === 0 ? ' is-first' : '') + '" data-zone="' + z.id + '"><div class="rung-rank mono">' + (i + 1) + '</div><div><div class="rung-name">' + esc(z.name) + '</div><div class="rung-why">' + esc(rankReason(z, i, list)) + '</div><div class="rung-keys">' + keyChips(z, inc, acked) + '</div></div><div class="rung-score mono">' + z.score + '<small>/100</small></div>' + (inc && !acked ? '<div class="rung-actions"><button class="btn btn-sm btn-danger" data-ack="' + inc.id + '">Acknowledge ' + esc(z.name) + '</button></div>' : '') + '</div>';
+}
+function renderLadder(state) {
+  const ladder = $('#ladder'); const list = BE.ranking();
+  $('#ladderHint').textContent = list.length ? list.length + ' critical' : 'all clear';
+  const key = list.map(z => z.id).join('|');
+  if (!list.length) { if (state.lastRankKey !== 'EMPTY') { ladder.innerHTML = '<div class="ladder-empty"><div class="big">Campus clear</div><div class="small">All zones SAFE, no open incidents. The ladder fills the moment a zone crosses 65.</div></div>'; state.lastRankKey = 'EMPTY'; } updateBanner(null); return; }
+  if (key !== state.lastRankKey) {
+    const before = new Map(); ladder.querySelectorAll('.rung').forEach(el => before.set(el.dataset.zone, el.getBoundingClientRect().top));
+    ladder.innerHTML = list.map((z, i) => rungHTML(z, i, list)).join('');
+    ladder.querySelectorAll('.rung').forEach(el => {
+      const prev = before.get(el.dataset.zone);
+      if (prev == null) { el.animate([{ opacity: 0, transform: 'translateY(10px) scale(0.98)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)' }); return; }
+      const dy = prev - el.getBoundingClientRect().top; if (Math.abs(dy) < 1) return;
+      el.animate([{ transform: 'translateY(' + dy + 'px)' }, { transform: 'none' }], { duration: 440, easing: 'cubic-bezier(.2,.7,.3,1)' });
+    });
+    state.lastRankKey = key;
+  } else {
+    list.forEach((z, i) => { const el = ladder.querySelector('.rung[data-zone="' + z.id + '"]'); if (!el) return; const inc = z.openIncident, acked = inc && inc.ack_by; el.querySelector('.rung-why').textContent = rankReason(z, i, list); el.querySelector('.rung-score').innerHTML = z.score + '<small>/100</small>'; el.querySelector('.rung-keys').innerHTML = keyChips(z, inc, acked); const act = el.querySelector('.rung-actions'); if (acked && act) act.remove(); });
+  }
+  updateBanner(list[0]);
+}
+function updateBanner(top) {
+  const b = $('#banner'); if (!top) { b.hidden = true; return; }
+  if (b.hidden) { b.hidden = false; b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; }
+  $('#bannerZone').textContent = top.name; $('#bannerScore').textContent = top.score;
+  const haz = BE.activeHazards(top);
+  $('#bannerWhy').textContent = (haz.length ? haz.join(' + ') : 'combined signals') + ' · ' + top.raw.people + ' ' + (top.raw.people === 1 ? 'person' : 'people') + ' inside · critical for ' + fmtDur(now() - (top.criticalSince || now())) + ' · ' + top.block;
+}
+function renderPredicted() {
+  const rows = BE.zoneStatus().filter(z => !z.phantom).map(z => ({ z, p: predictOf(z) })).sort((a, b) => (b.p || 0) - (a.p || 0));
+  $('#predRows').innerHTML = rows.map(({ z, p }) => '<div class="pred-row"><span class="pred-name">' + esc(z.name) + '</span><span class="pred-track"><span class="pred-fill" style="width:' + (p == null ? 0 : p * 100).toFixed(1) + '%"></span></span><span class="pred-val">' + (p == null ? 'n/a' : Math.round(p * 100) + '%') + '</span></div>').join('');
+}
+function filteredIncidents(state) {
+  const f = state.filters; const cut = f.range ? now() - f.range * 60000 : 0;
+  return DB.incidents.filter(i => { if (f.zone && i.zone_id !== f.zone) return false; if (f.status && i.status !== f.status) return false; if (cut && i.opened_at < cut) return false; if (f.q) { const hay = (i.id + ' ' + i.zone_name + ' ' + i.hazards.join(' ') + ' ' + (i.ack_by || '')).toLowerCase(); if (!hay.includes(f.q.toLowerCase())) return false; } return true; });
+}
+function renderIncidents(state) {
+  const list = filteredIncidents(state); $('#incHint').textContent = DB.incidents.length + (DB.incidents.length === 1 ? ' record' : ' records');
+  const body = $('#incBody');
+  if (!list.length) { body.innerHTML = '<tr class="empty-row"><td colspan="7">' + (DB.incidents.length ? 'No incidents match these filters.' : 'No incidents yet. Open the scenario console (Admin) and start a hazard.') + '</td></tr>'; return; }
+  body.innerHTML = list.map(i => {
+    const dur = i.resolved_at ? i.resolved_at - i.opened_at : now() - i.opened_at; const open = state.expanded.has(i.id);
+    let html = '<tr data-inc="' + i.id + '" class="' + (open ? 'expanded' : '') + '" style="cursor:pointer"><td class="i-id">' + i.id + '</td><td><b>' + esc(i.zone_name) + '</b></td><td>' + (i.hazards.map(h => '<span class="tag">' + esc(h) + '</span>').join(' ') || '—') + '</td><td class="mono">' + i.peak + '</td><td><span class="i-status" data-s="' + i.status + '"><span class="dot"></span>' + i.status + '</span></td><td>' + (i.ack_by ? esc(i.ack_by) + ' <span class="i-id">' + fmtClock(i.ack_at) + '</span>' : '<span style="color:var(--color-text-subtle)">unacknowledged</span>') + '</td><td class="mono">' + fmtDur(dur) + '</td></tr>';
+    if (open) html += '<tr><td class="timeline-cell" colspan="7"><div class="timeline">' + i.timeline.map(e => '<div class="tl-item" data-kind="' + e.kind + '"><div class="tl-time mono">' + fmtClock(e.ts) + ' · ' + e.kind + '</div><div>' + esc(e.text) + '</div></div>').join('') + '</div></td></tr>';
+    return html;
+  }).join('');
+}
+function renderHealth(state) {
+  if (state.role !== 'admin') return; const up = now() - BE.bootAt;
+  const stats = [['Uptime', fmtDur(up), ''], ['Ingest', BE.ingestRate(), 'msg/s'], ['Zones', DB.zones.size, 'registered'], ['Accepted', DB.counters.accepted, ''], ['Rejected', DB.counters.rejected, 'invalid'], ['DB writes', DB.counters.writes, ''], ['Readings', DB.readings.length, 'rows'], ['Broker', Broker.mode === 'live' ? 'live' : Broker.mode === 'sim' ? 'sim' : 'off', '']];
+  $('#statGrid').innerHTML = stats.map(([k, v, u]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="u">' + u + '</div></div>').join('');
+  const strip = $('#phantomStrip'); if (!Nodes.phantoms.length) { strip.innerHTML = ''; return; }
+  strip.innerHTML = '<div style="width:100%;font-size:10.5px;color:var(--color-text-subtle);margin-bottom:2px">' + Nodes.phantoms.length + ' simulated load zones</div>' + Nodes.phantoms.map(p => { const z = DB.zones.get(p); return '<span class="phantom" data-s="' + (z ? z.state : 'SAFE') + '" title="' + p + '"></span>'; }).join('');
+}
+function doAck(state, id) {
+  const res = BE.acknowledge(id, state.user);
+  if (!res.ok && res.error === 'already_acknowledged') toast({ level: 'info', title: 'Already acknowledged', detail: id + ' was taken by ' + res.by + '.' });
+  else if (res.ok) toast({ level: 'ok', title: 'Acknowledged ' + id, detail: 'Recorded against ' + state.user.name + ' at ' + fmtClock(now()) + '.' });
+  Dashboard.render();
+}
+function submitReport(state) {
+  const text = $('#reportTa').value.trim(); if (!text) return;
+  const p = interpret(text); const checks = validateReport(p); const passed = checks.every(c => c.ok);
+  $('#gateOut').innerHTML = '<div class="gate"><div class="gate-head">' + I.shield + 'Deterministic validation gate</div><div class="gate-body"><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px">Read as: <b style="color:var(--color-text)">' + esc(p.zone ? p.zone.name : 'unknown zone') + ' · ' + esc(p.hazard || 'unknown hazard') + ' · severity ' + p.severity.toFixed(2) + ' · confidence ' + p.confidence.toFixed(2) + '</b></div>' + checks.map(c => '<div class="check" data-ok="' + c.ok + '">' + (c.ok ? I.check : I.x) + '<span>' + esc(c.label) + ' <span style="opacity:.72">— ' + esc(c.got) + '</span></span></div>').join('') + '</div><div class="gate-verdict" data-ok="' + passed + '">' + (passed ? 'Accepted. ' + p.zone.name + ' now carries a ' + p.hazard + ' floor of ' + (p.severity * 0.7).toFixed(2) + ' that decays over 90 s, fed through the same risk formula as the sensors.' : 'Rejected before it could touch the ranking. Nothing was written to the zone.') + '</div></div>';
+  if (passed) { p.zone.reportFloor = { channel: p.hazard, value: p.severity * 0.7, until: now() + 90000, span: 90000 }; toast({ level: 'warning', title: 'Report accepted for ' + p.zone.name, detail: 'Read as ' + p.hazard + ' at severity ' + p.severity.toFixed(2) + '.' }); }
+  else { const first = checks.find(c => !c.ok); toast({ level: 'info', title: 'Report not accepted', detail: 'Failed check: ' + first.label }); }
+}
+function exportCSV(state) {
+  const rows = [['incident_id', 'zone', 'hazards', 'peak_risk', 'status', 'acknowledged_by', 'opened_at', 'resolved_at', 'duration_s']];
+  filteredIncidents(state).forEach(i => rows.push([i.id, i.zone_name, i.hazards.join('|'), i.peak, i.status, i.ack_by || '', new Date(i.opened_at).toISOString(), i.resolved_at ? new Date(i.resolved_at).toISOString() : '', Math.round(((i.resolved_at || now()) - i.opened_at) / 1000)]));
+  const csv = '\uFEFF' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  try { const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'scsrg_incidents_' + new Date().toISOString().slice(0, 10) + '.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500); toast({ level: 'ok', title: 'Incident log exported', detail: (rows.length - 1) + ' rows, UTF-8 with BOM.' }); }
+  catch (e) { toast({ level: 'info', title: 'Export blocked by the preview frame' }); }
+}
+
+/* =====================================================================
+   THEME (shared toggle button lives on both the landing nav and dashboard)
+   ===================================================================== */
+function wireLandingTheme() {
+  const btn = $('#lpTheme');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  });
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+Router.init();
+Login.init();
+wireLandingTheme();
+})();
+
+</script>
+</body>
+</html>
