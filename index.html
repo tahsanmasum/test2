@@ -786,7 +786,8 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
             <div class="tl"><b>TLS (wss://)</b><small>Required when the dashboard is served over HTTPS.</small></div>
           </div>
           <div class="toggle-row">
-            <button class="switch" id="bkSim" aria-pressed="true" aria-label="Publish simulated nodes"></button>
+            <!-- UPDATE: Changed aria-pressed to "false" to disable demo data by default -->
+            <button class="switch" id="bkSim" aria-pressed="false" aria-label="Publish simulated nodes"></button>
             <div class="tl"><b>Publish simulated zone nodes</b><small>Loops demo readings through the broker so sensors appear even with no hardware. Real ESP32 nodes on the same topic show up too.</small></div>
           </div>
           <div class="url-preview" id="urlPreview">wss://broker.hivemq.com:8884/mqtt</div>
@@ -839,60 +840,6 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
     <div class="cn-note">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
       <span>If the broker can't be reached (blocked port, offline network) the dashboard still opens and runs on its built-in zone simulator, so a demo never dead-ends.</span>
-    </div>
-
-    <!-- ESP32 firmware guide -->
-    <div class="panel" style="margin-top:18px;max-width:860px">
-      <div class="panel-head">
-        <h2>ESP32 node wiring guide</h2>
-        <span class="hint">add to your .ino to go live</span>
-      </div>
-      <div class="panel-body-tight" style="display:flex;flex-direction:column;gap:14px">
-        <p style="font-size:13px;line-height:1.6;color:var(--color-text-muted);margin:0">Your firmware currently publishes only to Serial. Add the block below to send readings over MQTT. The dashboard accepts <b>10-bit (0–1023) or 12-bit (0–4095)</b> ADC — it auto-scales anything above 1023, so no change needed to <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--color-bg-subtle);padding:1px 5px;border-radius:4px">analogReadResolution()</code>.</p>
-        <div class="formula" style="font-size:12px;line-height:1.9;overflow-x:auto;white-space:pre;tab-size:2"><span class="c">// ── paste at the top of your .ino, after existing #includes ──</span>
-#include &lt;WiFi.h&gt;
-#include &lt;PubSubClient.h&gt;
-
-const char* WIFI_SSID  = <span class="w">"YOUR_WIFI_SSID"</span>;
-const char* WIFI_PASS  = <span class="w">"YOUR_WIFI_PASSWORD"</span>;
-const char* MQTT_HOST  = <span class="w">"broker.hivemq.com"</span>; <span class="c">// must match Connect screen host</span>
-const int   MQTT_PORT  = <span class="w">1883</span>;              <span class="c">// plain TCP for ESP32 (dashboard uses WSS 8884)</span>
-const char* BASE_TOPIC = <span class="w">"scsrg/campus"</span>;   <span class="c">// must match Base topic field above</span>
-const char* ZONE_ID    = <span class="w">"IOT"</span>;             <span class="c">// IOT | SRV | ROB | DSL</span>
-
-WiFiClient   espClient;
-PubSubClient mqtt(espClient);
-unsigned long lastPub = 0;
-
-<span class="c">// ── add to setup(), after your calibration block ──</span>
-WiFi.begin(WIFI_SSID, WIFI_PASS);
-while (WiFi.status() != WL_CONNECTED) { delay(400); }
-mqtt.setServer(MQTT_HOST, MQTT_PORT);
-
-<span class="c">// ── add to loop(), after computing mq2Raw / flameRaw / pirState ──</span>
-if (!mqtt.connected()) {
-  String cid = "scsrg-" + String(ZONE_ID) + "-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-  mqtt.connect(cid.c_str());
-}
-mqtt.loop();
-if (millis() - lastPub &gt; 800) {
-  static uint32_t seq = 0;
-  char topic[64], payload[180];
-  snprintf(topic, sizeof(topic), "%s/%s", BASE_TOPIC, ZONE_ID);
-  snprintf(payload, sizeof(payload),
-    <span class="w">"{\"seq\":%lu,\"ts\":%lu,\"readings\":{\"flame\":%d,\"gas\":%d,\"water\":0,\"people\":%d}}"</span>,
-    (unsigned long)++seq, (unsigned long)millis(),
-    (flameRaw &lt; flameCrit) ? 1 : 0, <span class="c">// flame: 0 or 1</span>
-    mq2Raw,                          <span class="c">// raw ADC — 10-bit OR 12-bit, both accepted</span>
-    pirState == HIGH ? 1 : 0);
-  mqtt.publish(topic, payload);
-  lastPub = millis();
-}</div>
-        <div class="lock-note">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
-          <span>The dashboard subscribes on <b>wss://host:8884</b> (WebSocket, browser). The ESP32 publishes on <b>mqtt://host:1883</b> (plain TCP). Same broker, different port — both reach the same message queue. No code change needed.</span>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -964,7 +911,7 @@ if (millis() - lastPub &gt; 800) {
       </section>
       <section class="panel"><div class="panel-head"><h2>Risk fusion in use</h2><span class="hint">computed on the backend</span></div>
         <div class="panel-body-tight">
-          <div class="formula"><span class="c">// the zone node sends raw ADC values only — never a score or a state</span><br>risk(zone) = <span class="w">40</span>·fire<span class="c">(0|1, after 3-sample debounce)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">25</span>·gas<span class="c">(ADC 0–1023 or 0–4095, auto-scaled then normalised, 30 s warm-up)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">20</span>·water<span class="c">(ADC 0–1023 or 0–4095, auto-scaled)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">15</span>·occupancy<span class="c">(min(people/4, 1))</span></div>
+          <div class="formula"><span class="c">// the zone node sends raw values only — never a score or a state</span><br>risk(zone) = <span class="w">40</span>·fire<span class="c">(0|1, after 3-sample debounce)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">25</span>·gas<span class="c">(0.0–1.0, normalised, 30 s warm-up)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">20</span>·water<span class="c">(0.0–1.0)</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <span class="w">15</span>·occupancy<span class="c">(min(people/4, 1))</span></div>
           <div class="thresholds"><div class="thresh" data-s="SAFE"><div class="r mono">&lt; 30</div><div class="s">SAFE</div></div><div class="thresh" data-s="WARNING"><div class="r mono">30 – 64</div><div class="s">WARNING</div></div><div class="thresh" data-s="CRITICAL"><div class="r mono">≥ 65</div><div class="s">CRITICAL</div></div></div>
           <p style="font-size:12px;color:var(--color-text-muted);line-height:1.6;margin:12px 0 0">Fire is weighted highest — it escalates fastest in a lab full of electronics. Occupancy is lightest alone but becomes the tie-breaker when two zones are critical together. Escalation uses hysteresis: a zone leaves CRITICAL only below 58 and WARNING only below 25, so a flapping sensor can't spawn duplicate incidents.</p>
         </div>
@@ -1601,25 +1548,14 @@ const BE = {
     if (!z) return { ok: false, code: 404 };
     const r = payload.readings || {};
     const bad = [];
-    // Accept both 10-bit (0-1023) and 12-bit (0-4095) ADC — ESP32 default is 12-bit.
-    // Auto-scale anything above 1023 down to the 0-1023 range used by compute().
-    const scaleADC = v => {
-      if (typeof v !== 'number' || v < 0) return null;
-      if (v <= 1023) return Math.round(v);           // 10-bit or already scaled
-      if (v <= 4095) return Math.round(v / 4);        // 12-bit → scale to 10-bit
-      return null;                                    // out of range
-    };
     if (!(r.flame === 0 || r.flame === 1)) bad.push('flame');
-    const gasScaled   = scaleADC(r.gas);
-    const waterScaled = scaleADC(r.water);
-    if (gasScaled   === null) bad.push('gas_adc');
-    if (waterScaled === null) bad.push('water_adc');
+    if (!(typeof r.gas === 'number' && r.gas >= 0 && r.gas <= 1023)) bad.push('gas_adc');
+    if (!(typeof r.water === 'number' && r.water >= 0 && r.water <= 1023)) bad.push('water_adc');
     if (!(Number.isInteger(r.people) && r.people >= 0 && r.people <= 60)) bad.push('people');
     if (bad.length) { DB.counters.rejected++; this.emit({ type: 'rejected', zone: z, fields: bad }); return { ok: false, code: 422, fields: bad }; }
     DB.counters.accepted++; this.rateWindow.push(now()); z.lastSeen = now();
     if (!z.online) { z.online = true; this.emit({ type: 'online', zone: z }); }
-    // Store scaled values — compute() always sees 0-1023
-    z.raw = { flame: r.flame, gas: gasScaled, water: waterScaled, people: r.people };
+    z.raw = { flame: r.flame, gas: r.gas, water: r.water, people: r.people };
     z.viaBroker = !!payload.viaBroker;
     this.compute(z);
     DB.readings.push({ zone_id: z.id, ts: now(), ...z.raw, score: z.score });
