@@ -786,7 +786,7 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
             <div class="tl"><b>TLS (wss://)</b><small>Required when the dashboard is served over HTTPS.</small></div>
           </div>
           <div class="toggle-row">
-            <!-- UPDATE: Changed aria-pressed to "false" to disable demo data by default -->
+            <!-- UPDATE: Keep aria-pressed false so simulated zone-node publishing stays disabled by default -->
             <button class="switch" id="bkSim" aria-pressed="false" aria-label="Publish simulated nodes"></button>
             <div class="tl"><b>Publish simulated zone nodes</b><small>Loops demo readings through the broker so sensors appear even with no hardware. Real ESP32 nodes on the same topic show up too.</small></div>
           </div>
