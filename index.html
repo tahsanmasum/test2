@@ -835,11 +835,11 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
         Open command dashboard
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
       </button>
-      <button class="btn btn-lg" id="btnSimDash">Continue in simulation</button>
+      <button class="btn btn-lg" id="btnSimDash">Open dashboard offline</button>
     </div>
     <div class="cn-note">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
-      <span>If the broker can't be reached (blocked port, offline network) the dashboard still opens and runs on its built-in zone simulator, so a demo never dead-ends.</span>
+      <span>If the broker can't be reached (blocked port, offline network) the dashboard still opens, but it stays offline until a live broker is available.</span>
     </div>
   </div>
 </div>
@@ -853,7 +853,7 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
     </div>
     <div class="d-spacer"></div>
     <div class="d-group">
-      <button class="link-pill" id="linkPill" data-link="local" title="Broker status — click to manage"><span class="link-dot"></span><span id="linkText">SIMULATION</span></button>
+      <button class="link-pill" id="linkPill" data-link="offline" title="Broker status — click to manage"><span class="link-dot"></span><span id="linkText">OFFLINE</span></button>
       <span class="clock mono" id="clock">--:--:--</span>
     </div>
     <div class="d-group">
@@ -927,7 +927,7 @@ select.filter-sel{height:32px;padding:0 8px;border-radius:8px;background:var(--c
 
   <div class="foot">
     <span>SCS-RG · RoboFusion 1.0 Round 1</span><i class="sep"></i>
-    <span id="footLink">Simulation mode</span><i class="sep"></i>
+    <span id="footLink">Offline mode</span><i class="sep"></i>
     <span>Zone nodes: ESP32 · flame · MQ-2 · water level · PIR</span><i class="sep"></i>
     <span id="footBackup">Last backup —</span>
   </div>
@@ -1152,12 +1152,11 @@ const Login = {
 /* =====================================================================
    MQTT BROKER LAYER
    Real connection via MQTT.js over WebSocket when the library is
-   available; a faithful in-browser broker simulation otherwise, so a
-   blocked port or offline network never dead-ends the demo.
+    available; if the broker cannot be reached, the dashboard stays offline until a live connection is available.
    ===================================================================== */
 const Broker = {
   client: null,
-  mode: 'none',            // 'none' | 'live' | 'sim'
+  mode: 'none',            // 'none' | 'live'
   status: 'offline',       // 'offline' | 'connecting' | 'online'
   cfg: null,
   msgCount: 0,
@@ -1185,10 +1184,10 @@ const Broker = {
     const t0 = now();
 
     const haveLib = typeof window.mqtt !== 'undefined' && typeof window.mqtt.connect === 'function';
-    if (!haveLib) { this.fallbackToSim('MQTT.js did not load (offline network or blocked CDN).'); return; }
+    if (!haveLib) { this.fallbackToOffline('MQTT.js did not load (offline network or blocked CDN).'); return; }
 
     let settled = false;
-    const failTimer = setTimeout(() => { if (!settled) { settled = true; this.fallbackToSim('Connection timed out after 7s — port likely blocked from this network.'); } }, 7000);
+    const failTimer = setTimeout(() => { if (!settled) { settled = true; this.fallbackToOffline('Connection timed out after 7s — port likely blocked from this network.'); } }, 7000);
 
     try {
       const opts = {
@@ -1216,18 +1215,17 @@ const Broker = {
         this.seenNodes.set(nodeId, { topic, at: now(), payload: obj });
         this.emit({ type: 'message', topic, nodeId, payload: obj });
       });
-      this.client.on('error', () => { if (settled) return; settled = true; clearTimeout(failTimer); this.fallbackToSim('Broker refused the connection (bad host, TLS mismatch, or blocked port).'); });
+      this.client.on('error', () => { if (settled) return; settled = true; clearTimeout(failTimer); this.fallbackToOffline('Broker refused the connection (bad host, TLS mismatch, or blocked port).'); });
       this.client.on('close', () => { if (this.mode === 'live' && this.status === 'online') { this.status = 'offline'; this.emit({ type: 'status', status: 'offline', mode: 'live' }); } });
     } catch (e) {
       clearTimeout(failTimer);
-      this.fallbackToSim('Could not open a WebSocket to that host.');
+      this.fallbackToOffline('Could not open a WebSocket to that host.');
     }
   },
 
-  fallbackToSim(reason) {
-    this.mode = 'sim'; this.status = 'online'; this.connectedAt = now(); this.latency = 38 + Math.round(Math.random() * 40);
-    this.emit({ type: 'status', status: 'online', mode: 'sim', reason });
-    this.startSimLoop();
+  fallbackToOffline(reason) {
+    this.disconnect();
+    this.emit({ type: 'status', status: 'offline', mode: 'none', reason });
   },
 
   startSimLoop() {
@@ -1237,7 +1235,7 @@ const Broker = {
       this.simSeq++;
       nodes.forEach(n => {
         // respect a scenario-console "disconnect this node" fault — a broker
-        // (real or simulated) can only relay what its node actually publishes
+        // can only relay what its node actually publishes
         if (Nodes.faults[n] && Nodes.faults[n].disconnected) return;
         const payload = { seq: this.simSeq, ts: now(), source: 'sim' };
         this.msgCount++;
@@ -1248,14 +1246,8 @@ const Broker = {
   },
 
   publish(topic, obj) {
-    if (this.mode === 'live' && this.client && this.client.connected) {
-      try { this.client.publish(topic, JSON.stringify(obj)); } catch (e) { /* ignore */ }
-    }
-    // in sim mode, or as a mirror, feed it straight back through as a message
-    this.msgCount++;
-    const nodeId = topic.split('/').pop();
-    this.seenNodes.set(nodeId, { topic, at: now(), payload: obj });
-    this.emit({ type: 'message', topic, nodeId, payload: obj });
+    if (this.mode !== 'live' || !this.client || !this.client.connected) return;
+    try { this.client.publish(topic, JSON.stringify(obj)); } catch (e) { /* ignore */ }
   },
 
   disconnect() {
@@ -1270,10 +1262,10 @@ const Broker = {
    CONNECT SCREEN
    ===================================================================== */
 const PRESETS = [
-  { id: 'hivemq-public', label: 'HiveMQ public broker', host: 'broker.hivemq.com', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: true },
-  { id: 'hivemq-cloud', label: 'HiveMQ Cloud (your cluster)', host: '', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: true, needsAuth: true },
-  { id: 'mosquitto-test', label: 'Mosquitto test broker', host: 'test.mosquitto.org', port: 8081, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: true },
-  { id: 'local', label: 'Local Mosquitto', host: 'localhost', port: 9001, path: '/mqtt', topic: 'scsrg/campus', tls: false, sim: true },
+  { id: 'hivemq-public', label: 'HiveMQ public broker', host: 'broker.hivemq.com', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false },
+  { id: 'hivemq-cloud', label: 'HiveMQ Cloud (your cluster)', host: '', port: 8884, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false, needsAuth: true },
+  { id: 'mosquitto-test', label: 'Mosquitto test broker', host: 'test.mosquitto.org', port: 8081, path: '/mqtt', topic: 'scsrg/campus', tls: true, sim: false },
+  { id: 'local', label: 'Local Mosquitto', host: 'localhost', port: 9001, path: '/mqtt', topic: 'scsrg/campus', tls: false, sim: false },
 ];
 
 const Connect = {
@@ -1318,7 +1310,7 @@ const Connect = {
       $('#bkPath').value = p.path;
       $('#bkTopic').value = p.topic;
       $('#bkTls').setAttribute('aria-pressed', String(p.tls));
-      $('#bkSim').setAttribute('aria-pressed', String(p.sim));
+      $('#bkSim').setAttribute('aria-pressed', String(!!p.sim));
     } else {
       $('#bkLabel').value = 'Custom broker';
       $('#bkHost').value = '';
@@ -1349,7 +1341,7 @@ const Connect = {
     $('#bkTopic').value = c.topic || 'scsrg/campus';
     $('#bkUser').value = c.user || '';
     $('#bkTls').setAttribute('aria-pressed', String(c.tls !== false));
-    $('#bkSim').setAttribute('aria-pressed', String(c.simPublish !== false));
+    $('#bkSim').setAttribute('aria-pressed', String(c.simPublish === true));
     this.updatePreview();
   },
 
@@ -1384,7 +1376,6 @@ const Connect = {
     });
     $('#btnSimDash').addEventListener('click', () => {
       Broker.disconnect();
-      Broker.fallbackToSim('Continued in simulation by choice.');
       Router.go('dashboard');
     });
     $('#cnLogout').addEventListener('click', () => doLogout());
@@ -1411,15 +1402,22 @@ const Connect = {
       orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7 12a5 5 0 0 1 10 0"/><circle cx="12" cy="12" r="1.6"/></svg>';
     } else if (s === 'online') {
       const live = Broker.mode === 'live';
-      word.textContent = 'Online' + (live ? '' : ' · simulated');
-      desc.textContent = live ? 'Connected over WebSocket. Subscribed to ' + Broker.cfg.topic + '/#.' : (evt && evt.reason ? evt.reason + ' Running the built-in zone simulator instead.' : 'Publishing simulated zone traffic on the base topic.');
+      if (!live) {
+        word.textContent = 'Offline';
+        desc.textContent = evt && evt.reason ? evt.reason : 'No live broker connected.';
+        orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M9.5 9.5A5 5 0 0 0 12 19a5 5 0 0 0 3.4-1.3"/></svg>';
+        $('#mBroker').textContent = '—'; $('#mLatency').textContent = '—'; $('#mTopic').textContent = '—'; $('#mMsgs').textContent = '0';
+        return;
+      }
+      word.textContent = 'Online';
+      desc.textContent = 'Connected over WebSocket. Subscribed to ' + Broker.cfg.topic + '/#.';
       orb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7 12a5 5 0 0 1 10 0"/><circle cx="12" cy="12" r="1.6"/></svg>';
-      $('#mBroker').textContent = Broker.cfg ? Broker.cfg.host : 'sim://local';
+      $('#mBroker').textContent = Broker.cfg ? Broker.cfg.host : '—';
       $('#mLatency').textContent = Broker.latency != null ? Broker.latency + ' ms' : '—';
       $('#mTopic').textContent = (Broker.cfg ? Broker.cfg.topic : 'scsrg/campus') + '/#';
       toast(live
         ? { level: 'ok', title: 'Broker online', detail: Broker.cfg.host + ' connected in ' + Broker.latency + ' ms. Waiting for zone readings…' }
-        : { level: 'warning', title: 'Broker offline — running simulation', detail: (evt && evt.reason) || 'Falling back so the dashboard never dead-ends.' });
+        : { level: 'warning', title: 'Broker offline', detail: (evt && evt.reason) || 'Connect a live broker to see zone readings.' });
     }
   },
 
@@ -1659,15 +1657,14 @@ const Nodes = {
   init() { ZONE_DEFS.forEach(d => { BE.registerZone(d); this.targets[d.id] = { flame: 0, gas: 40, water: 20, people: d.baseOcc }; }); },
   set(zoneId, patch) { Object.assign(this.targets[zoneId], patch); },
   tickLocal() {
-    // used only while no broker message has arrived recently for a node —
-    // keeps the demo alive even before the first MQTT message lands
+    // Keep the dashboard quiet until a live broker starts feeding data.
+    if (Broker.mode !== 'live') return;
     this.seq++;
-    const brokerActive = Broker.mode === 'live' || Broker.mode === 'sim';
     DB.zones.forEach(z => {
-      // only back off once a broker (real or its sim fallback) is actually feeding this
+      // only back off once a live broker is actually feeding this
       // zone — if the operator opened the dashboard without connecting anything, this
-      // loop must stay the sole driver so nothing goes stale
-      if (brokerActive && now() - z.lastSeen < 1600) return;
+      // loop stays paused so nothing simulates locally
+      if (now() - z.lastSeen < 1600) return;
       const f = this.faults[z.id] || {};
       if (f.disconnected) return;
       const t = this.targets[z.id]; const r = z.raw;
@@ -1812,12 +1809,12 @@ const Dashboard = {
 
   applyBrokerLabel(evt) {
     const pill = $('#linkPill'), text = $('#linkText'), foot = $('#footLink');
-    let mode = 'local', label = 'SIMULATION';
+    let mode = 'offline', label = 'OFFLINE';
     if (Broker.status === 'connecting') { mode = 'connecting'; label = 'CONNECTING'; }
     else if (Broker.status === 'online' && Broker.mode === 'live') { mode = 'online'; label = 'LIVE · ' + (Broker.cfg ? Broker.cfg.host.split('.')[0].toUpperCase() : 'MQTT'); }
-    else if (Broker.status === 'online' && Broker.mode === 'sim') { mode = 'local'; label = 'SIM · BROKER FALLBACK'; }
+    
     pill.dataset.link = mode; text.textContent = label;
-    foot.textContent = mode === 'online' ? 'Connected to ' + Broker.cfg.host + ' · ' + Broker.msgCount + ' messages' : 'Simulation mode — no live broker traffic';
+    foot.textContent = mode === 'online' ? 'Connected to ' + Broker.cfg.host + ' · ' + Broker.msgCount + ' messages' : 'Offline mode — connect a broker to see live traffic';
   },
 
   setRole(role) {
